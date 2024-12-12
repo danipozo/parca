@@ -1,20 +1,21 @@
 # vim: ft=dockerfile
-FROM docker.io/node:16.20.2-alpine@sha256:a1f9d027912b58a7c75be7716c97cfbc6d3099f3a97ed84aa490be9dee20e787 AS ui-deps
+FROM node:23 AS ui-deps
 
 WORKDIR /app
 
 COPY ui/packages/shared ./packages/shared
 COPY ui/packages/app/web/package.json ./packages/app/web/package.json
 COPY ui/package.json ui/pnpm-lock.yaml ./
-RUN pnpm --filter @parca/web install --frozen-lockfile --prefer-offline
+RUN npm install -g pnpm 
+RUN pnpm install --frozen-lockfile --prefer-offline
 
-FROM docker.io/node:16.20.2-alpine@sha256:a1f9d027912b58a7c75be7716c97cfbc6d3099f3a97ed84aa490be9dee20e787 AS ui-builder
+FROM node:23 AS ui-builder
 
 WORKDIR /app
 
 COPY ui .
 COPY --from=ui-deps /app/node_modules ./node_modules
-RUN pnpm install --frozen-lockfile --prefer-offline && pnpm run build
+RUN npm install -g pnpm && pnpm install --frozen-lockfile --prefer-offline && pnpm run build
 
 FROM docker.io/golang:1.23.4-alpine@sha256:6c5c9590f169f77c8046e45c611d3b28fe477789acd8d3762d23d4744de69812 AS builder
 
@@ -45,8 +46,18 @@ COPY ./gen /app/gen
 
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -gcflags="all=-N -l" -o parca ./cmd/parca
 
+FROM rust:1.83-bullseye as addr2line-builder
+
+ARG ADDR2LINE_VERSION=0.24.2
+
+WORKDIR /app
+
+RUN git clone --branch "${ADDR2LINE_VERSION}" --depth 1 https://github.com/gimli-rs/addr2line
+RUN cd addr2line && cargo build --features bin --release
+
 FROM docker.io/golang:1.23.4-alpine@sha256:6c5c9590f169f77c8046e45c611d3b28fe477789acd8d3762d23d4744de69812
 
+COPY --from=addr2line-builder /app/addr2line/target/release/addr2line /
 COPY --from=builder /go/bin/dlv /
 COPY --from=builder /go/bin/grpc-health-probe /
 COPY --from=builder /app/parca /parca
@@ -54,4 +65,4 @@ COPY parca.yaml /parca.yaml
 
 EXPOSE 7070
 
-ENTRYPOINT ["/dlv", "--listen=:40000", "--headless=true", "--api-version=2", "--accept-multiclient", "exec", "--continue", "--"]
+ENTRYPOINT ["/parca"]
