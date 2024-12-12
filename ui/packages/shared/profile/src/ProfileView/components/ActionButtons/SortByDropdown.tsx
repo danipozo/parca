@@ -11,22 +11,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import {Select} from '@parca/components';
+import {Select, useURLState} from '@parca/components';
 
-import {FIELD_CUMULATIVE, FIELD_DIFF, FIELD_FUNCTION_NAME} from '../IcicleGraphArrow';
+import {
+  FIELD_CUMULATIVE,
+  FIELD_DIFF,
+  FIELD_FUNCTION_NAME,
+} from '../../../ProfileIcicleGraph/IcicleGraphArrow';
+import {useProfileViewContext} from '../../context/ProfileViewContext';
 
-const SortBySelect = ({
-  sortBy,
-  setSortBy,
-  compareMode,
-}: {
-  sortBy: string;
-  setSortBy: (key: string) => void;
-  compareMode: boolean;
-}): React.JSX.Element => {
+const SortByDropdown = (): React.JSX.Element => {
+  const [storeSortBy, setStoreSortBy] = useURLState('sort_by', {
+    defaultValue: FIELD_FUNCTION_NAME,
+  });
+
+  const {compareMode} = useProfileViewContext();
+
   return (
     <div>
-      <label className="text-sm">Sort</label>
+      <label className="text-sm">Sort by</label>
       <Select
         className="!px-3"
         items={[
@@ -67,8 +70,8 @@ const SortBySelect = ({
             },
           },
         ]}
-        selectedKey={sortBy}
-        onSelection={key => setSortBy(key)}
+        selectedKey={storeSortBy as string}
+        onSelection={key => setStoreSortBy(key)}
         placeholder={'Sort By'}
         primary={false}
         disabled={false}
@@ -78,4 +81,4 @@ const SortBySelect = ({
   );
 };
 
-export default SortBySelect;
+export default SortByDropdown;

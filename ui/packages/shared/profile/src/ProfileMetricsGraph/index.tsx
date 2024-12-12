@@ -101,8 +101,8 @@ export const useQueryRange = (
   skip = false
 ): IQueryRangeState => {
   const metadata = useGrpcMetadata();
-  const {navigateTo} = useParcaContext();
-  const [stepCountStr, setStepCount] = useURLState({param: 'step_count', navigateTo});
+  const [stepCountStr, setStepCount] = useURLState('step_count');
+
   const defaultStepCount = useMemo(() => {
     return getStepCountFromScreenWidth(10);
   }, []);
@@ -238,6 +238,7 @@ const ProfileMetricsGraph = ({
             height={height}
             width={width}
             margin={margin}
+            sumBy={sumBy}
           />
         ) : (
           <ProfileMetricsEmptyState message="No data found. Try a different query." />

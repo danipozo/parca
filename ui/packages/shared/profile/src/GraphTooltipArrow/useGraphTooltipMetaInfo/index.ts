@@ -15,7 +15,6 @@ import {Table} from 'apache-arrow';
 
 import {QueryRequest_ReportType} from '@parca/client';
 import {useParcaContext, useURLState} from '@parca/components';
-import type {NavigateFunction} from '@parca/utilities';
 
 import {
   FIELD_FUNCTION_FILE_NAME,
@@ -29,13 +28,12 @@ import {
 } from '../../ProfileIcicleGraph/IcicleGraphArrow';
 import {arrowToString} from '../../ProfileIcicleGraph/IcicleGraphArrow/utils';
 import {ProfileSource} from '../../ProfileSource';
-import {useProfileViewContext} from '../../ProfileView/ProfileViewContext';
+import {useProfileViewContext} from '../../ProfileView/context/ProfileViewContext';
 import {useQuery} from '../../useQuery';
 
 interface Props {
   table: Table<any>;
   row: number;
-  navigateTo: NavigateFunction;
 }
 
 interface GraphTooltipMetaInfoData {
@@ -51,11 +49,7 @@ interface GraphTooltipMetaInfoData {
   inlined: boolean | null;
 }
 
-export const useGraphTooltipMetaInfo = ({
-  table,
-  row,
-  navigateTo,
-}: Props): GraphTooltipMetaInfoData => {
+export const useGraphTooltipMetaInfo = ({table, row}: Props): GraphTooltipMetaInfoData => {
   const mappingFile: string | null = arrowToString(table.getChild(FIELD_MAPPING_FILE)?.get(row));
   const mappingBuildID: string | null = arrowToString(
     table.getChild(FIELD_MAPPING_BUILD_ID)?.get(row)
@@ -70,10 +64,8 @@ export const useGraphTooltipMetaInfo = ({
   const functionStartLine: bigint = table.getChild(FIELD_FUNCTION_START_LINE)?.get(row) ?? 0n;
   const lineNumber =
     locationLine !== 0n ? locationLine : functionStartLine !== 0n ? functionStartLine : undefined;
-  const pprofLabelPrefix = 'pprof_labels.';
-  const labelColumnNames = table.schema.fields.filter(field =>
-    field.name.startsWith(pprofLabelPrefix)
-  );
+  const labelPrefix = 'labels.';
+  const labelColumnNames = table.schema.fields.filter(field => field.name.startsWith(labelPrefix));
 
   const {queryServiceClient, enableSourcesView} = useParcaContext();
   const {profileSource} = useProfileViewContext();
@@ -107,33 +99,23 @@ export const useGraphTooltipMetaInfo = ({
 
   const labelPairs: Array<[string, string]> = labelColumnNames
     .map((field, i) => [
-      labelColumnNames[i].name.slice(pprofLabelPrefix.length),
+      labelColumnNames[i].name.slice(labelPrefix.length),
       arrowToString(table.getChild(field.name)?.get(row)) ?? '',
     ])
     .filter(value => value[1] !== '') as Array<[string, string]>;
 
-  const [dashboardItems, setDashboardItems] = useURLState({
-    param: 'dashboard_items',
-    navigateTo,
+  const [dashboardItems, setDashboardItems] = useURLState<string[]>('dashboard_items', {
+    alwaysReturnArray: true,
   });
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [unusedBuildId, setSourceBuildId] = useURLState({
-    param: 'source_buildid',
-    navigateTo,
-  });
+  const [unusedBuildId, setSourceBuildId] = useURLState('source_buildid');
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [unusedFilename, setSourceFilename] = useURLState({
-    param: 'source_filename',
-    navigateTo,
-  });
+  const [unusedFilename, setSourceFilename] = useURLState('source_filename');
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [unusedLine, setSourceLine] = useURLState({
-    param: 'source_line',
-    navigateTo,
-  });
+  const [unusedLine, setSourceLine] = useURLState('source_line');
 
   const openFile = (): void => {
     setDashboardItems([dashboardItems[0], 'source']);

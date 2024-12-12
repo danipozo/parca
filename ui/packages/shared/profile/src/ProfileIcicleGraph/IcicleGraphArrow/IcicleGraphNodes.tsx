@@ -26,9 +26,8 @@ import {ProfileType} from '@parca/parser';
 import {
   FIELD_CHILDREN,
   FIELD_CUMULATIVE,
-  FIELD_CUMULATIVE_PER_SECOND,
   FIELD_DIFF,
-  FIELD_DIFF_PER_SECOND,
+  FIELD_FUNCTION_FILE_NAME,
   FIELD_FUNCTION_NAME,
   FIELD_MAPPING_FILE,
 } from './index';
@@ -40,7 +39,8 @@ export const RowHeight = 26;
 interface IcicleGraphNodesProps {
   table: Table<any>;
   row: number;
-  mappingColors: mappingColors;
+  colors: colorByColors;
+  colorBy: string;
   childRows: number[];
   x: number;
   y: number;
@@ -69,7 +69,8 @@ interface IcicleGraphNodesProps {
 export const IcicleGraphNodes = React.memo(function IcicleGraphNodesNoMemo({
   table,
   childRows,
-  mappingColors,
+  colors,
+  colorBy,
   x,
   y,
   xScale,
@@ -116,7 +117,8 @@ export const IcicleGraphNodes = React.memo(function IcicleGraphNodesNoMemo({
         key={`node-${level}-${i}`}
         table={table}
         row={child}
-        mappingColors={mappingColors}
+        colors={colors}
+        colorBy={colorBy}
         x={xStart}
         y={0}
         totalWidth={totalWidth}
@@ -147,7 +149,7 @@ export const IcicleGraphNodes = React.memo(function IcicleGraphNodesNoMemo({
   return <g transform={`translate(${x}, ${y})`}>{childrenElements}</g>;
 });
 
-export interface mappingColors {
+export interface colorByColors {
   [key: string]: string;
 }
 
@@ -160,7 +162,8 @@ interface IcicleNodeProps {
   level: number;
   table: Table<any>;
   row: number;
-  mappingColors: mappingColors;
+  colors: colorByColors;
+  colorBy: string;
   path: string[];
   total: bigint;
   setCurPath: (path: string[]) => void;
@@ -194,7 +197,8 @@ const fadedIcicleRectStyles = {
 export const IcicleNode = React.memo(function IcicleNodeNoMemo({
   table,
   row,
-  mappingColors,
+  colors,
+  colorBy,
   x,
   y,
   height,
@@ -224,19 +228,29 @@ export const IcicleNode = React.memo(function IcicleNodeNoMemo({
   const mappingColumn = table.getChild(FIELD_MAPPING_FILE);
   const functionNameColumn = table.getChild(FIELD_FUNCTION_NAME);
   const cumulativeColumn = table.getChild(FIELD_CUMULATIVE);
-  const cumulativePerSecondColumn = table.getChild(FIELD_CUMULATIVE_PER_SECOND);
   const diffColumn = table.getChild(FIELD_DIFF);
-  const diffPerSecondColumn = table.getChild(FIELD_DIFF_PER_SECOND);
+  const filenameColumn = table.getChild(FIELD_FUNCTION_FILE_NAME);
   // get the actual values from the columns
   const mappingFile: string | null = arrowToString(mappingColumn?.get(row));
   const functionName: string | null = arrowToString(functionNameColumn?.get(row));
   const cumulative = cumulativeColumn?.get(row) !== null ? BigInt(cumulativeColumn?.get(row)) : 0n;
-  const cumulativePerSecond: number | null =
-    cumulativePerSecondColumn?.get(row) != null ? cumulativePerSecondColumn.get(row) : 0;
   const diff: bigint | null = diffColumn?.get(row) !== null ? BigInt(diffColumn?.get(row)) : null;
-  const diffPerSecond: number | null =
-    diffPerSecondColumn?.get(row) != null ? diffPerSecondColumn.get(row) : null;
   const childRows: number[] = Array.from(table.getChild(FIELD_CHILDREN)?.get(row) ?? []);
+  const filename: string | null = arrowToString(filenameColumn?.get(row));
+
+  const colorAttribute: string | null = useMemo(() => {
+    let attr: string | null | undefined;
+
+    if (colorBy === 'filename') {
+      attr = filename;
+    } else if (colorBy === 'binary') {
+      attr = mappingFile;
+    }
+
+    return attr ?? null; // Provide a default value of null if attr is undefined
+  }, [colorBy, filename, mappingFile]);
+
+  const colorsMap = colors;
 
   const highlightedNodes = useMemo(() => {
     if (!highlightSimilarStacksPreference) {
@@ -274,15 +288,6 @@ export const IcicleNode = React.memo(function IcicleNodeNoMemo({
       });
       break;
     case FIELD_CUMULATIVE:
-      if (profileType?.delta ?? false) {
-        childRows.sort((a, b) => {
-          const aCumulativePerSecond = cumulativePerSecondColumn?.get(a);
-          const bCumulativePerSecond = cumulativePerSecondColumn?.get(b);
-          return bCumulativePerSecond - aCumulativePerSecond;
-        });
-        break;
-      }
-
       childRows.sort((a, b) => {
         const aCumulative: bigint = cumulativeColumn?.get(a);
         const bCumulative: bigint = cumulativeColumn?.get(b);
@@ -291,48 +296,21 @@ export const IcicleNode = React.memo(function IcicleNodeNoMemo({
       break;
     case FIELD_DIFF:
       childRows.sort((a, b) => {
-        if (profileType?.delta ?? false) {
-          let aRatio: number | null = null;
-          let bRatio: number | null = null;
-
-          const aDiff: number | null = diffPerSecondColumn?.get(a);
-          if (aDiff !== null) {
-            const cumulative: number = cumulativePerSecondColumn?.get(a);
-            const prev = cumulative - aDiff;
-            aRatio = aDiff / prev;
-          }
-
-          const bDiff: number | null = diffPerSecondColumn?.get(b);
-          if (bDiff !== null) {
-            const cumulative: number = cumulativePerSecondColumn?.get(b);
-            const prev = cumulative - bDiff;
-            bRatio = bDiff / prev;
-          }
-
-          if (aRatio !== null && bRatio !== null) {
-            return bRatio - aRatio;
-          }
-          if (aRatio === null && bRatio !== null) {
-            return -1;
-          }
-          if (aRatio !== null && bRatio === null) {
-            return 1;
-          }
-          // both are null
-          return 0;
-        }
-
         let aRatio: number | null = null;
-        const aDiff: bigint | null = diffColumn?.get(a);
+        const aDiff: bigint | null =
+          diffColumn?.get(a) !== null ? BigInt(diffColumn?.get(a)) : null;
         if (aDiff !== null) {
-          const cumulative: bigint = cumulativeColumn?.get(a) ?? 0n;
+          const cumulative: bigint =
+            cumulativeColumn?.get(a) !== null ? BigInt(cumulativeColumn?.get(a)) : 0n;
           const prev: bigint = cumulative - aDiff;
           aRatio = Number(aDiff) / Number(prev);
         }
         let bRatio: number | null = null;
-        const bDiff: bigint | null = diffColumn?.get(b);
+        const bDiff: bigint | null =
+          diffColumn?.get(b) !== null ? BigInt(diffColumn?.get(b)) : null;
         if (bDiff !== null) {
-          const cumulative: bigint = cumulativeColumn?.get(b) ?? 0n;
+          const cumulative: bigint =
+            cumulativeColumn?.get(b) !== null ? BigInt(cumulativeColumn?.get(b)) : 0n;
           const prev: bigint = cumulative - bDiff;
           bRatio = Number(bDiff) / Number(prev);
         }
@@ -357,11 +335,9 @@ export const IcicleNode = React.memo(function IcicleNodeNoMemo({
     isDarkMode: darkMode,
     compareMode,
     cumulative,
-    cumulativePerSecond,
     diff,
-    diffPerSecond,
-    mappingColors,
-    mappingFile,
+    colorsMap,
+    colorAttribute,
   });
   const name = useMemo(() => {
     return isRoot ? 'root' : nodeLabel(table, row, level, binaries.length > 1);
@@ -446,7 +422,8 @@ export const IcicleNode = React.memo(function IcicleNodeNoMemo({
         <IcicleGraphNodes
           table={table}
           row={row}
-          mappingColors={mappingColors}
+          colors={colors}
+          colorBy={colorBy}
           childRows={childRows}
           x={x}
           y={RowHeight}

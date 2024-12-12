@@ -18,16 +18,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	stdmath "math"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/apache/arrow/go/v16/arrow"
-	"github.com/apache/arrow/go/v16/arrow/array"
-	"github.com/apache/arrow/go/v16/arrow/bitutil"
-	"github.com/apache/arrow/go/v16/arrow/math"
-	"github.com/apache/arrow/go/v16/arrow/memory"
+	"github.com/apache/arrow/go/v17/arrow"
+	"github.com/apache/arrow/go/v17/arrow/array"
+	"github.com/apache/arrow/go/v17/arrow/bitutil"
+	"github.com/apache/arrow/go/v17/arrow/math"
+	"github.com/apache/arrow/go/v17/arrow/memory"
 	"github.com/go-kit/log"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -48,9 +47,9 @@ type Querier interface {
 	QueryRange(ctx context.Context, query string, startTime, endTime time.Time, step time.Duration, limit uint32, sumBy []string) ([]*pb.MetricsSeries, error)
 	ProfileTypes(ctx context.Context) ([]*pb.ProfileType, error)
 	QuerySingle(ctx context.Context, query string, time time.Time, invertCallStacks bool) (profile.Profile, error)
-	QueryMerge(ctx context.Context, query string, start, end time.Time, aggregateByLabels, invertCallStacks bool) (profile.Profile, error)
+	QueryMerge(ctx context.Context, query string, start, end time.Time, aggregateByLabels []string, invertCallStacks bool) (profile.Profile, error)
 	GetProfileMetadataMappings(ctx context.Context, query string, start, end time.Time) ([]string, error)
-	GetProfileMetadataLabels(ctx context.Context, start, end time.Time) ([]string, error)
+	GetProfileMetadataLabels(ctx context.Context, query string, start, end time.Time) ([]string, error)
 }
 
 var (
@@ -224,10 +223,11 @@ func (q *ColumnQueryAPI) Query(ctx context.Context, req *pb.QueryRequest) (*pb.Q
 	}
 
 	var (
-		p        profile.Profile
-		filtered int64
-		isDiff   bool
-		isInvert bool
+		profileMetadata *pb.ProfileMetadata
+		p               profile.Profile
+		filtered        int64
+		isDiff          bool
+		isInvert        bool
 	)
 
 	if req.InvertCallStack != nil {
@@ -237,56 +237,30 @@ func (q *ColumnQueryAPI) Query(ctx context.Context, req *pb.QueryRequest) (*pb.Q
 	groupBy := req.GetGroupBy().GetFields()
 	allowedGroupBy := map[string]struct{}{
 		FlamegraphFieldFunctionName:     {},
-		FlamegraphFieldLabels:           {},
 		FlamegraphFieldLocationAddress:  {},
 		FlamegraphFieldMappingFile:      {},
 		FlamegraphFieldFunctionFileName: {},
 	}
-	groupByLabels := false
+	groupByLabels := make([]string, 0, len(groupBy))
 	for _, f := range groupBy {
-		if f == FlamegraphFieldLabels {
-			groupByLabels = true
+		if strings.HasPrefix(f, FlamegraphFieldLabels+".") {
+			// Add label to the groupByLabels passed to FrostDB
+			groupByLabels = append(groupByLabels, f)
+			continue
 		}
-		if _, allowed := allowedGroupBy[f]; !allowed {
-			return nil, status.Errorf(codes.InvalidArgument, "invalid group by field: %s", f)
+		if _, allowed := allowedGroupBy[f]; allowed {
+			groupByLabels = append(groupByLabels, f)
+			continue
 		}
+		return nil, status.Errorf(codes.InvalidArgument, "invalid group by field: %s", f)
 	}
 
 	switch req.Mode {
 	case pb.QueryRequest_MODE_SINGLE_UNSPECIFIED:
 		p, err = q.selectSingle(ctx, req.GetSingle(), isInvert)
 	case pb.QueryRequest_MODE_MERGE:
-		p, err = q.selectMerge(
-			ctx,
-			req.GetMerge(),
-			groupByLabels,
-			isInvert,
-		)
-	case pb.QueryRequest_MODE_DIFF:
-		isDiff = true
-		p, err = q.selectDiff(
-			ctx,
-			req.GetDiff(),
-			groupByLabels,
-			isInvert,
-		)
-	default:
-		return nil, status.Error(codes.InvalidArgument, "unknown query mode")
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		for _, r := range p.Samples {
-			r.Release()
-		}
-	}()
-
-	if req.GetReportType() == pb.QueryRequest_REPORT_TYPE_PROFILE_METADATA {
-		var profileMetadata *pb.ProfileMetadata
-
-		switch req.Mode {
-		case pb.QueryRequest_MODE_MERGE:
+		switch req.GetReportType() {
+		case pb.QueryRequest_REPORT_TYPE_PROFILE_METADATA:
 			mappingFiles, labels, err := getMappingFilesAndLabels(ctx, q.querier, req.GetMerge().Query, req.GetMerge().Start.AsTime(), req.GetMerge().End.AsTime())
 			if err != nil {
 				return nil, err
@@ -296,8 +270,18 @@ func (q *ColumnQueryAPI) Query(ctx context.Context, req *pb.QueryRequest) (*pb.Q
 				MappingFiles: mappingFiles,
 				Labels:       labels,
 			}
-
-		case pb.QueryRequest_MODE_DIFF:
+		default:
+			p, err = q.selectMerge(
+				ctx,
+				req.GetMerge(),
+				groupByLabels,
+				isInvert,
+			)
+		}
+	case pb.QueryRequest_MODE_DIFF:
+		isDiff = true
+		switch req.GetReportType() {
+		case pb.QueryRequest_REPORT_TYPE_PROFILE_METADATA:
 			// When comparing, we only return the metadata for the profile we are rendering, which is the profile B.
 			mappingFiles, labels, err := getMappingFilesAndLabels(ctx, q.querier, req.GetDiff().B.GetMerge().GetQuery(), req.GetDiff().B.GetMerge().Start.AsTime(), req.GetDiff().B.GetMerge().End.AsTime())
 			if err != nil {
@@ -309,15 +293,31 @@ func (q *ColumnQueryAPI) Query(ctx context.Context, req *pb.QueryRequest) (*pb.Q
 				Labels:       labels,
 			}
 		default:
-			return nil, status.Error(codes.InvalidArgument, "unknown query mode")
+			p, err = q.selectDiff(
+				ctx,
+				req.GetDiff(),
+				false,
+				isInvert,
+			)
 		}
-
+	default:
+		return nil, status.Error(codes.InvalidArgument, "unknown query mode")
+	}
+	if err != nil {
+		return nil, err
+	}
+	if req.GetReportType() == pb.QueryRequest_REPORT_TYPE_PROFILE_METADATA {
 		return &pb.QueryResponse{
 			Total:    0,
 			Filtered: 0,
 			Report:   &pb.QueryResponse_ProfileMetadata{ProfileMetadata: profileMetadata},
 		}, nil
 	}
+	defer func() {
+		for _, r := range p.Samples {
+			r.Release()
+		}
+	}()
 
 	var functionToFilterBy string
 	// Extract the function name to filter by from the request in the Filter field.
@@ -358,7 +358,7 @@ func (q *ColumnQueryAPI) Query(ctx context.Context, req *pb.QueryRequest) (*pb.Q
 		req.GetReportType(),
 		req.GetNodeTrimThreshold(),
 		filtered,
-		groupBy,
+		groupByLabels,
 		req.GetSourceReference(),
 		source,
 		isDiff,
@@ -708,7 +708,7 @@ func (q *ColumnQueryAPI) selectSingle(ctx context.Context, s *pb.SingleProfile, 
 func (q *ColumnQueryAPI) selectMerge(
 	ctx context.Context,
 	m *pb.MergeProfile,
-	aggregateByLabels bool,
+	groupByLabels []string,
 	isInverted bool,
 ) (profile.Profile, error) {
 	p, err := q.querier.QueryMerge(
@@ -716,7 +716,7 @@ func (q *ColumnQueryAPI) selectMerge(
 		m.Query,
 		m.Start.AsTime(),
 		m.End.AsTime(),
-		aggregateByLabels,
+		groupByLabels,
 		isInverted,
 	)
 	if err != nil {
@@ -789,39 +789,30 @@ func ComputeDiff(ctx context.Context, tracer trace.Tracer, mem memory.Allocator,
 	records := make([]arrow.Record, 0, len(compare.Samples)+len(base.Samples))
 
 	var (
-		compareCumulativeRatio          = 1.0
-		compareCumulativePerSecondRatio = 1.0
-		baseCumulativeRatio             = 1.0
-		baseCumulativePerSecondRatio    = 1.0
+		compareCumulativeRatio = 1.0
+		baseCumulativeRatio    = 1.0
 	)
 
 	if !absolute {
 		compareCumulativeTotal := int64(0)
-		compareCumulativePerSecondTotal := float64(0)
 		for _, r := range compare.Samples {
 			cols := r.Columns()
-			compareCumulativeTotal += math.Int64.Sum(cols[len(cols)-4].(*array.Int64))
-			compareCumulativePerSecondTotal += math.Float64.Sum(cols[len(cols)-3].(*array.Float64))
+			compareCumulativeTotal += math.Int64.Sum(cols[len(cols)-2].(*array.Int64))
 		}
 
 		baseCumulativeTotal := int64(0)
-		baseCumulativePerSecondTotal := float64(0)
 		for _, r := range base.Samples {
 			cols := r.Columns()
-			baseCumulativeTotal += math.Int64.Sum(cols[len(cols)-4].(*array.Int64))
-			baseCumulativePerSecondTotal += math.Float64.Sum(cols[len(cols)-3].(*array.Float64))
+			baseCumulativeTotal += math.Int64.Sum(cols[len(cols)-2].(*array.Int64))
 		}
 
 		// Scale up base if compare is bigger
 		if compareCumulativeTotal > baseCumulativeTotal {
 			baseCumulativeRatio = float64(compareCumulativeTotal) / float64(baseCumulativeTotal)
-			baseCumulativePerSecondRatio = compareCumulativePerSecondTotal / baseCumulativePerSecondTotal
 		}
-
 		// Scale up compare if base is bigger
 		if baseCumulativeTotal > compareCumulativeTotal {
 			compareCumulativeRatio = float64(baseCumulativeTotal) / float64(compareCumulativeTotal)
-			compareCumulativePerSecondRatio = baseCumulativePerSecondTotal / compareCumulativePerSecondTotal
 		}
 	}
 
@@ -837,22 +828,12 @@ func ComputeDiff(ctx context.Context, tracer trace.Tracer, mem memory.Allocator,
 
 		if compareCumulativeRatio > 1.0 {
 			// If compareCumulativeRatio is bigger than 1.0 we have to scale all values
-			multi := multiplyInt64By(mem, cols[len(cols)-4].(*array.Int64), compareCumulativeRatio)
-			cols[len(cols)-2] = multi
-			cleanupArrs = append(cleanupArrs, multi)
-		} else {
-			// otherwise we simply use the original values.
-			cols[len(cols)-2] = cols[len(cols)-4] // value as diff
-		}
-
-		if compareCumulativePerSecondRatio > 1.0 {
-			// If compareCumulativePerSecondRatio is bigger than 1.0 we have to scale all values
-			multi := multiplyFloat64By(mem, cols[len(cols)-3].(*array.Float64), compareCumulativePerSecondRatio)
+			multi := multiplyInt64By(mem, cols[len(cols)-2].(*array.Int64), compareCumulativeRatio)
 			cols[len(cols)-1] = multi
 			cleanupArrs = append(cleanupArrs, multi)
 		} else {
 			// otherwise we simply use the original values.
-			cols[len(cols)-1] = cols[len(cols)-3] // value_per_second as diff_per_second
+			cols[len(cols)-1] = cols[len(cols)-2] // value as diff
 		}
 
 		records = append(records, array.NewRecord(
@@ -868,22 +849,16 @@ func ComputeDiff(ctx context.Context, tracer trace.Tracer, mem memory.Allocator,
 
 			cols := make([]arrow.Array, len(columns))
 			copy(cols, columns)
-			diff := multiplyInt64By(mem, columns[len(columns)-4].(*array.Int64), -1*baseCumulativeRatio)
+			diff := multiplyInt64By(mem, columns[len(columns)-2].(*array.Int64), -1*baseCumulativeRatio)
 			defer diff.Release()
-			diffPerSecond := multiplyFloat64By(mem, columns[len(columns)-3].(*array.Float64), -1*baseCumulativePerSecondRatio)
-			defer diffPerSecond.Release()
 			value := zeroInt64Array(mem, int(r.NumRows()))
 			defer value.Release()
-			valuePerSecond := zeroFloat64Array(mem, int(r.NumRows()))
-			defer valuePerSecond.Release()
 			records = append(records, array.NewRecord(
 				r.Schema(),
 				append(
-					cols[:len(cols)-4], // all other columns like locations
+					cols[:len(cols)-2], // all other columns like locations
 					value,
-					valuePerSecond,
 					diff,
-					diffPerSecond,
 				),
 				r.NumRows(),
 			))
@@ -912,26 +887,6 @@ func multiplyInt64By(pool memory.Allocator, arr *array.Int64, factor float64) ar
 	return b.NewArray()
 }
 
-func multiplyFloat64By(pool memory.Allocator, arr *array.Float64, factor float64) arrow.Array {
-	if stdmath.IsNaN(factor) {
-		arr.Retain()
-		return arr
-	}
-
-	b := array.NewFloat64Builder(pool)
-	defer b.Release()
-
-	values := arr.Float64Values()
-	valid := make([]bool, len(values))
-	for i := range values {
-		values[i] *= factor
-		valid[i] = true
-	}
-
-	b.AppendValues(values, valid)
-	return b.NewArray()
-}
-
 func zeroInt64Array(pool memory.Allocator, rows int) arrow.Array {
 	b := array.NewInt64Builder(pool)
 	defer b.Release()
@@ -946,26 +901,12 @@ func zeroInt64Array(pool memory.Allocator, rows int) arrow.Array {
 	return b.NewArray()
 }
 
-func zeroFloat64Array(pool memory.Allocator, rows int) arrow.Array {
-	b := array.NewFloat64Builder(pool)
-	defer b.Release()
-
-	values := make([]float64, rows)
-	valid := make([]bool, len(values))
-	for i := range values {
-		valid[i] = true
-	}
-
-	b.AppendValues(values, valid)
-	return b.NewArray()
-}
-
 func (q *ColumnQueryAPI) selectProfileForDiff(ctx context.Context, s *pb.ProfileDiffSelection, aggregateByLabels, isInverted bool) (profile.Profile, error) {
 	switch s.Mode {
 	case pb.ProfileDiffSelection_MODE_SINGLE_UNSPECIFIED:
 		return q.selectSingle(ctx, s.GetSingle(), isInverted)
 	case pb.ProfileDiffSelection_MODE_MERGE:
-		return q.selectMerge(ctx, s.GetMerge(), aggregateByLabels, isInverted)
+		return q.selectMerge(ctx, s.GetMerge(), []string{}, isInverted)
 	default:
 		return profile.Profile{}, status.Error(codes.InvalidArgument, "unknown mode for diff profile selection")
 	}
@@ -1031,10 +972,13 @@ func getMappingFilesAndLabels(
 ) ([]string, []string, error) {
 	mappingFiles, err := q.GetProfileMetadataMappings(ctx, query, startTime, endTime)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("failed to get mappings: %w", err)
 	}
 
-	labels := []string{}
+	labels, err := q.GetProfileMetadataLabels(ctx, query, startTime, endTime)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get labels: %w", err)
+	}
 
 	return mappingFiles, labels, nil
 }

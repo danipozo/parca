@@ -17,9 +17,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/apache/arrow/go/v16/arrow"
-	"github.com/apache/arrow/go/v16/arrow/array"
-	"github.com/apache/arrow/go/v16/arrow/memory"
+	"github.com/apache/arrow/go/v17/arrow"
+	"github.com/apache/arrow/go/v17/arrow/array"
+	"github.com/apache/arrow/go/v17/arrow/memory"
 	pprofprofile "github.com/google/pprof/profile"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/trace/noop"
@@ -40,6 +40,7 @@ func TestGenerateTable(t *testing.T) {
 		profile.Meta{},
 		pp,
 		0,
+		[]string{},
 	)
 	require.NoError(t, err)
 
@@ -121,6 +122,7 @@ func TestTableCallView(t *testing.T) {
 		profile.Meta{},
 		pp,
 		0,
+		[]string{},
 	)
 	require.NoError(t, err)
 
@@ -238,6 +240,7 @@ func TestGenerateTableAggregateFlat(t *testing.T) {
 			}},
 		},
 		0,
+		[]string{},
 	)
 	require.NoError(t, err)
 

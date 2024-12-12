@@ -16,7 +16,7 @@ package profile
 import (
 	"encoding/binary"
 
-	"github.com/apache/arrow/go/v16/arrow/array"
+	"github.com/apache/arrow/go/v17/arrow/array"
 	pprofextended "go.opentelemetry.io/proto/otlp/profiles/v1experimental"
 
 	pprofpb "github.com/parca-dev/parca/gen/proto/go/google/pprof"
@@ -394,7 +394,12 @@ func serializedArrowLocationSize(
 			size = addSerializedInt64AsUvarintSize(size, lineFunctionStartLine.Value(i))
 			size = addSerializedStringSize(size, string(lineFunctionNameDict.Value(int(lineFunctionName.GetValueIndex(i)))))
 			size = addSerializedStringSize(size, string(lineFunctionSystemNameDict.Value(int(lineFunctionSystemName.GetValueIndex(i)))))
-			size = addSerializedStringSize(size, string(lineFunctionFilenameDictValues.Value(int(lineFunctionFilenameDict.GetValueIndex(lineFunctionFilename.GetPhysicalIndex(i))))))
+
+			if lineFunctionFilenameDict.IsValid(lineFunctionFilename.GetPhysicalIndex(i)) {
+				size = addSerializedStringSize(size, string(lineFunctionFilenameDictValues.Value(int(lineFunctionFilenameDict.GetValueIndex(lineFunctionFilename.GetPhysicalIndex(i))))))
+			} else {
+				size = addSerializedStringSize(size, "")
+			}
 		}
 	}
 

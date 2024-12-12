@@ -11,8 +11,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import {useState} from 'react';
+
 import {QueryServiceClient} from '@parca/client';
-import {Card, useURLState} from '@parca/components';
+import {useURLState} from '@parca/components';
 import {Query} from '@parca/parser';
 import type {NavigateFunction} from '@parca/utilities';
 
@@ -48,6 +50,8 @@ const ProfileExplorerCompare = ({
   closeProfile,
   navigateTo,
 }: ProfileExplorerCompareProps): JSX.Element => {
+  const [showMetricsGraph, setShowMetricsGraph] = useState(true);
+
   const closeProfileA = (): void => {
     closeProfile('A');
   };
@@ -56,13 +60,13 @@ const ProfileExplorerCompare = ({
     closeProfile('B');
   };
 
-  const [compareAbsolute] = useURLState({param: 'compare_absolute', navigateTo});
-  const [functionFilter] = useURLState({param: 'filter_by_function', navigateTo});
+  const [compareAbsolute] = useURLState('compare_absolute');
+  const [functionFilter] = useURLState('filter_by_function');
 
   return (
     <>
-      <div className="flex justify-between gap-2">
-        <Card className="mt-2 p-2">
+      <div className="flex justify-between gap-2 relative mb-2">
+        <div className="flex-column flex-1 p-2 shadow-md rounded-md">
           <ProfileSelector
             queryClient={queryClient}
             querySelection={queryA}
@@ -74,9 +78,11 @@ const ProfileExplorerCompare = ({
             comparing={true}
             navigateTo={navigateTo}
             suffix="_a"
+            showMetricsGraph={showMetricsGraph}
+            setDisplayHideMetricsGraphButton={setShowMetricsGraph}
           />
-        </Card>
-        <Card className="mt-2 p-2">
+        </div>
+        <div className="flex-column flex-1 p-2 shadow-md rounded-md">
           <ProfileSelector
             queryClient={queryClient}
             querySelection={queryB}
@@ -88,26 +94,25 @@ const ProfileExplorerCompare = ({
             comparing={true}
             navigateTo={navigateTo}
             suffix="_b"
+            showMetricsGraph={showMetricsGraph}
+            setDisplayHideMetricsGraphButton={setShowMetricsGraph}
           />
-        </Card>
+        </div>
       </div>
       <div className="grid grid-cols-1">
         {profileA != null && profileB != null ? (
           <div>
-            <Card className="mt-2 px-6 py-4">
-              <ProfileViewWithData
-                navigateTo={navigateTo}
-                queryClient={queryClient}
-                profileSource={
-                  new ProfileDiffSource(
-                    profileA.ProfileSource(),
-                    profileB.ProfileSource(),
-                    Array.isArray(functionFilter) ? functionFilter[0] : functionFilter,
-                    compareAbsolute === 'true'
-                  )
-                }
-              />
-            </Card>
+            <ProfileViewWithData
+              queryClient={queryClient}
+              profileSource={
+                new ProfileDiffSource(
+                  profileA.ProfileSource(),
+                  profileB.ProfileSource(),
+                  Array.isArray(functionFilter) ? functionFilter[0] : functionFilter,
+                  compareAbsolute === 'true'
+                )
+              }
+            />
           </div>
         ) : (
           <div>

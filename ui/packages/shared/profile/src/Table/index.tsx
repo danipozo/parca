@@ -26,25 +26,42 @@ import cx from 'classnames';
 import {AnimatePresence, motion} from 'framer-motion';
 
 import {
-  Button,
   Table as TableComponent,
   TableSkeleton,
   useParcaContext,
   useURLState,
 } from '@parca/components';
 import {type RowRendererProps} from '@parca/components/dist/Table';
+import {useCurrentColorProfile} from '@parca/hooks';
 import {ProfileType} from '@parca/parser';
-import {
-  getLastItem,
-  isSearchMatch,
-  parseParams,
-  valueFormatter,
-  type NavigateFunction,
-} from '@parca/utilities';
+import {isSearchMatch, valueFormatter} from '@parca/utilities';
 
-import {useProfileViewContext} from '../ProfileView/ProfileViewContext';
-import {hexifyAddress} from '../utils';
-import ColumnsVisibility from './ColumnsVisibility';
+import {getFilenameColors, getMappingColors} from '../ProfileIcicleGraph/IcicleGraphArrow/';
+import {colorByColors} from '../ProfileIcicleGraph/IcicleGraphArrow/IcicleGraphNodes';
+import useMappingList, {
+  useFilenamesList,
+} from '../ProfileIcicleGraph/IcicleGraphArrow/useMappingList';
+import {useProfileViewContext} from '../ProfileView/context/ProfileViewContext';
+import {
+  ColumnName,
+  DataRow,
+  DummyRow,
+  ROW_HEIGHT,
+  RowName,
+  addPlusSign,
+  getCalleeRows,
+  getCallerRows,
+  getRowColor,
+  getScrollTargetIndex,
+  isFirstSubRow,
+  isLastSubRow,
+  isSubRow,
+  ratioString,
+  rowBgClassNames,
+  sizeToBottomStyle,
+  sizeToHeightStyle,
+  sizeToWidthStyle,
+} from './utils/functions';
 import {getTopAndBottomExpandedRowModel} from './utils/topAndBottomExpandedRowModel';
 
 const FIELD_MAPPING_FILE = 'mapping_file';
@@ -59,33 +76,9 @@ const FIELD_CUMULATIVE_DIFF = 'cumulative_diff';
 const FIELD_CALLERS = 'callers';
 const FIELD_CALLEES = 'callees';
 
-export interface DataRow {
-  id: number;
-  name: string;
-  flat: bigint;
-  flatDiff: bigint;
-  cumulative: bigint;
-  cumulativeDiff: bigint;
-  mappingFile: string;
-  functionSystemName: string;
-  functionFileName: string;
-  callers?: DataRow[];
-  callees?: DataRow[];
-  subRows?: Row[];
-  isTopSubRow?: boolean;
-  isBottomSubRow?: boolean;
-}
-
-interface DummyRow {
-  size: number;
-  message?: string;
-  isTopSubRow?: boolean;
-  isBottomSubRow?: boolean;
-}
-
 export type Row = DataRow | DummyRow;
 
-const isDummyRow = (row: Row): row is DummyRow => {
+export const isDummyRow = (row: Row): row is DummyRow => {
   return 'size' in row;
 };
 
@@ -96,41 +89,14 @@ interface TableProps {
   total: bigint;
   filtered: bigint;
   profileType?: ProfileType;
-  navigateTo?: NavigateFunction;
   loading: boolean;
   currentSearchString?: string;
+  setSearchString?: (searchString: string) => void;
   setActionButtons?: (buttons: React.JSX.Element) => void;
   isHalfScreen: boolean;
   unit?: string;
+  metadataMappingFiles?: string[];
 }
-
-const rowBgClassNames = (isExpanded: boolean, isSubRow: boolean): Record<string, boolean> => {
-  return {
-    relative: true,
-    'bg-indigo-100 dark:bg-gray-600': isSubRow,
-    'bg-indigo-50 dark:bg-gray-700': isExpanded,
-  };
-};
-
-const ROW_HEIGHT = 29;
-
-const sizeToHeightStyle = (size: number): Record<string, string> => {
-  return {
-    height: `${size * ROW_HEIGHT}px`,
-  };
-};
-
-const sizeToWidthStyle = (size: number): Record<string, string> => {
-  return {
-    width: `${size * ROW_HEIGHT}px`,
-  };
-};
-
-const sizeToBottomStyle = (size: number): Record<string, string> => {
-  return {
-    bottom: `-${size * ROW_HEIGHT}px`,
-  };
-};
 
 const CustomRowRenderer = ({
   row,
@@ -235,13 +201,13 @@ const CustomRowRenderer = ({
             {idx === 0 && isExpanded ? (
               <>
                 <div
-                  className={`absolute top-0 left-0 bg-white dark:bg-indigo-500 px-1 uppercase -rotate-90 origin-top-left z-10 text-[10px] border-l border-y border-gray-200 dark:border-gray-700 text-left`}
+                  className={`absolute top-0 left-0 bg-white dark:bg-indigo-500 px-1 uppercase -rotate-90 origin-top-left z-[9] text-[10px] border-l border-y border-gray-200 dark:border-gray-700 text-left`}
                   style={{...sizeToWidthStyle(3)}}
                 >
                   Callers {'->'}
                 </div>
                 <div
-                  className={`absolute left-[18px] bg-white dark:bg-indigo-500 px-1 uppercase -rotate-90 origin-bottom-left z-10 text-[10px] border-r border-y border-gray-200 dark:border-gray-700`}
+                  className={`absolute left-[18px] bg-white dark:bg-indigo-500 px-1 uppercase -rotate-90 origin-bottom-left z-[9] text-[10px] border-r border-y border-gray-200 dark:border-gray-700`}
                   style={{
                     ...sizeToWidthStyle(3),
                     ...sizeToBottomStyle(3),
@@ -260,80 +226,76 @@ const CustomRowRenderer = ({
   );
 };
 
-const getCallerRows = (callers: DataRow[]): Row[] => {
-  if (callers.length === 0) {
-    return [{size: 3, message: 'No callers.', isTopSubRow: true}];
-  }
-
-  const rows = callers.map(row => {
-    return {...row, isTopSubRow: true};
-  });
-  if (rows.length >= 3) {
-    return rows;
-  }
-
-  return [...rows, {size: 3 - rows.length, message: '', isTopSubRow: true}];
-};
-
-const getCalleeRows = (callees: DataRow[]): Row[] => {
-  if (callees.length === 0) {
-    return [{size: 3, message: 'No callees.', isBottomSubRow: true}];
-  }
-
-  const rows = callees.map(row => {
-    return {...row, isBottomSubRow: true};
-  });
-  if (rows.length >= 3) {
-    return rows;
-  }
-
-  return [{size: 3 - rows.length, message: '', isBottomSubRow: true}, ...rows];
-};
-
 export const Table = React.memo(function Table({
   data,
   total,
   filtered,
   profileType,
-  navigateTo,
   loading,
   currentSearchString,
-  setActionButtons,
+  setSearchString = () => {},
   isHalfScreen,
   unit,
+  metadataMappingFiles,
 }: TableProps): React.JSX.Element {
-  const router = parseParams(window?.location.search);
-  const [rawDashboardItems] = useURLState({param: 'dashboard_items'});
-  const [filterByFunctionInput] = useURLState({param: 'filter_by_function'});
+  const currentColorProfile = useCurrentColorProfile();
+  const [dashboardItems] = useURLState<string[]>('dashboard_items', {
+    alwaysReturnArray: true,
+  });
+
+  const [tableColumns] = useURLState<string[]>('table_columns', {
+    alwaysReturnArray: true,
+  });
+  const [colorBy, setColorBy] = useURLState('color_by');
   const {isDarkMode} = useParcaContext();
   const [expanded, setExpanded] = useState<ExpandedState>({});
   const [scrollToIndex, setScrollToIndex] = useState<number | undefined>(undefined);
 
   const {compareMode} = useProfileViewContext();
 
-  const dashboardItems = useMemo(() => {
-    if (rawDashboardItems !== undefined) {
-      return rawDashboardItems as string[];
-    }
-    return ['icicle'];
-  }, [rawDashboardItems]);
-
-  const percentageString = (value: bigint | number, total: bigint | number): string => {
-    if (total === 0n) {
-      return '0%';
+  const table = useMemo(() => {
+    if (loading || data == null) {
+      return null;
     }
 
-    const percentage = (Number(value) / Number(total)) * 100;
-    return `${percentage.toFixed(2)}%`;
+    return tableFromIPC(data);
+  }, [data, loading]);
+
+  const mappingsList = useMappingList(metadataMappingFiles);
+  const filenamesList = useFilenamesList(table);
+  const colorByValue = colorBy === undefined || colorBy === '' ? 'binary' : (colorBy as string);
+
+  const mappingsListCount = useMemo(
+    () => mappingsList.filter(m => m !== '').length,
+    [mappingsList]
+  );
+
+  // If there is only one mapping file, we want to color by filename by default.
+  useEffect(() => {
+    if (mappingsListCount === 1 && colorBy !== 'filename') {
+      setColorBy('filename');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mappingsListCount]);
+
+  const filenameColors = useMemo(() => {
+    const colors = getFilenameColors(filenamesList, isDarkMode, currentColorProfile);
+    return colors;
+  }, [isDarkMode, filenamesList, currentColorProfile]);
+
+  const mappingColors = useMemo(() => {
+    const colors = getMappingColors(mappingsList, isDarkMode, currentColorProfile);
+    return colors;
+  }, [isDarkMode, mappingsList, currentColorProfile]);
+
+  const colorByList = {
+    filename: filenameColors,
+    binary: mappingColors,
   };
 
-  const ratioString = (value: bigint | number): string => {
-    if (filtered === 0n) {
-      return ` ${percentageString(value, total)}`;
-    }
+  type ColorByKey = keyof typeof colorByList;
 
-    return `${percentageString(value, total)} / ${percentageString(value, filtered)}`;
-  };
+  const colorByColors: colorByColors = colorByList[colorByValue as ColorByKey];
 
   const columnHelper = createColumnHelper<Row>();
 
@@ -341,6 +303,15 @@ export const Table = React.memo(function Table({
 
   const columns = useMemo<Array<ColumnDef<Row>>>(() => {
     return [
+      columnHelper.accessor('color', {
+        id: 'color',
+        header: '',
+        cell: info => {
+          const color = info.getValue() as string;
+          return <div className="w-4 h-4 rounded-[4px]" style={{backgroundColor: color}} />;
+        },
+        size: 10,
+      }),
       columnHelper.accessor('flat', {
         id: 'flat',
         header: 'Flat',
@@ -358,7 +329,7 @@ export const Table = React.memo(function Table({
           if (isDummyRow(info.row.original)) {
             return '';
           }
-          return ratioString((info as CellContext<DataRow, bigint>).getValue());
+          return ratioString((info as CellContext<DataRow, bigint>).getValue(), total, filtered);
         },
         size: 120,
         meta: {
@@ -384,7 +355,7 @@ export const Table = React.memo(function Table({
           if (isDummyRow(info.row.original)) {
             return '';
           }
-          return ratioString((info as CellContext<DataRow, bigint>).getValue());
+          return ratioString((info as CellContext<DataRow, bigint>).getValue(), total, filtered);
         },
         size: 120,
         meta: {
@@ -409,7 +380,7 @@ export const Table = React.memo(function Table({
           if (isDummyRow(info.row.original)) {
             return '';
           }
-          return ratioString((info as CellContext<DataRow, bigint>).getValue());
+          return ratioString((info as CellContext<DataRow, bigint>).getValue(), total, filtered);
         },
         size: 150,
         meta: {
@@ -435,7 +406,7 @@ export const Table = React.memo(function Table({
           if (isDummyRow(info.row.original)) {
             return '';
           }
-          return ratioString((info as CellContext<DataRow, bigint>).getValue());
+          return ratioString((info as CellContext<DataRow, bigint>).getValue(), total, filtered);
         },
         size: 170,
         meta: {
@@ -469,6 +440,7 @@ export const Table = React.memo(function Table({
 
   const [columnVisibility, setColumnVisibility] = useState(() => {
     return {
+      color: true,
       flat: true,
       flatPercentage: false,
       flatDiff: compareMode,
@@ -484,20 +456,23 @@ export const Table = React.memo(function Table({
     };
   });
 
+  useEffect(() => {
+    if (Array.isArray(tableColumns)) {
+      setColumnVisibility(prevState => {
+        const newState = {...prevState};
+        (Object.keys(newState) as ColumnName[]).forEach(column => {
+          newState[column] = tableColumns.includes(column);
+        });
+        return newState;
+      });
+    }
+  }, [tableColumns]);
+
   const selectSpan = useCallback(
     (span: string): void => {
-      if (navigateTo != null) {
-        navigateTo(
-          '/',
-          {
-            ...router,
-            ...{search_string: span.trim()},
-          },
-          {replace: true}
-        );
-      }
+      setSearchString(span.trim());
     },
-    [navigateTo, router]
+    [setSearchString]
   );
 
   const onRowClick = useCallback(
@@ -515,37 +490,40 @@ export const Table = React.memo(function Table({
     [selectSpan, dashboardItems.length]
   );
 
-  const onRowDoubleClick = useCallback((row: RowType<Row>, rows: Array<RowType<Row>>) => {
-    if (isDummyRow(row.original)) {
-      return;
-    }
-    if (!isSubRow(row.original)) {
-      row.toggleExpanded();
-      return;
-    }
-    // find the original row for this subrow and toggle it
-    const newRow = rows.find(
-      r =>
-        !isDummyRow(r.original) &&
-        !isDummyRow(row.original) &&
-        r.original.name === row.original.name &&
-        !isSubRow(r.original)
-    );
-    const parentRow = rows.find(r => {
-      const parent = row.getParentRow()!;
-      if (isDummyRow(parent.original) || isDummyRow(r.original)) {
-        return false;
+  const onRowDoubleClick = useCallback(
+    (row: RowType<Row>, rows: Array<RowType<Row>>) => {
+      if (isDummyRow(row.original)) {
+        return;
       }
-      return r.original.name === parent.original.name;
-    });
-    if (parentRow == null || newRow == null) {
-      return;
-    }
+      if (!isSubRow(row.original)) {
+        row.toggleExpanded();
+        return;
+      }
+      // find the original row for this subrow and toggle it
+      const newRow = rows.find(
+        r =>
+          !isDummyRow(r.original) &&
+          !isDummyRow(row.original) &&
+          r.original.name === row.original.name &&
+          !isSubRow(r.original)
+      );
+      const parentRow = rows.find(r => {
+        const parent = row.getParentRow()!;
+        if (isDummyRow(parent.original) || isDummyRow(r.original)) {
+          return false;
+        }
+        return r.original.name === parent.original.name;
+      });
+      if (parentRow == null || newRow == null) {
+        return;
+      }
 
-    newRow.toggleExpanded();
+      newRow.toggleExpanded();
 
-    setScrollToIndex(getScrollTargetIndex(rows, parentRow, newRow));
-  }, []);
+      setScrollToIndex(getScrollTargetIndex(rows, parentRow, newRow));
+    },
+    [setScrollToIndex]
+  );
 
   const shouldHighlightRow = useCallback(
     (row: Row) => {
@@ -562,52 +540,6 @@ export const Table = React.memo(function Table({
     return currentSearchString != null && currentSearchString?.length > 0;
   }, [currentSearchString]);
 
-  const clearSelection = useCallback((): void => {
-    if (navigateTo != null) {
-      navigateTo(
-        '/',
-        {
-          ...router,
-          ...{search_string: filterByFunctionInput ?? ''},
-        },
-        {replace: true}
-      );
-    }
-  }, [navigateTo, router, filterByFunctionInput]);
-
-  useEffect(() => {
-    setActionButtons?.(
-      <>
-        <ColumnsVisibility
-          columns={columns}
-          visibility={columnVisibility}
-          setVisibility={(id, visible) => {
-            setColumnVisibility({...columnVisibility, [id]: visible});
-          }}
-        />
-        {dashboardItems.length > 1 && (
-          <Button
-            color="neutral"
-            onClick={clearSelection}
-            className="w-auto"
-            variant="neutral"
-            disabled={currentSearchString === undefined || currentSearchString.length === 0}
-          >
-            Clear selection
-          </Button>
-        )}
-      </>
-    );
-  }, [
-    dashboardItems,
-    clearSelection,
-    currentSearchString,
-    setActionButtons,
-    columns,
-    columnVisibility,
-    loading,
-  ]);
-
   const initialSorting = useMemo(() => {
     return [
       {
@@ -616,14 +548,6 @@ export const Table = React.memo(function Table({
       },
     ];
   }, [compareMode]);
-
-  const table = useMemo(() => {
-    if (loading || data == null) {
-      return null;
-    }
-
-    return tableFromIPC(data);
-  }, [data, loading]);
 
   const rows: DataRow[] = useMemo(() => {
     if (table == null || table.numRows === 0) {
@@ -653,6 +577,13 @@ export const Table = React.memo(function Table({
 
       return {
         id: i,
+        color: getRowColor(
+          colorByColors,
+          mappingFileColumn,
+          i,
+          functionFileNameColumn,
+          colorBy as string
+        ),
         name: RowName(mappingFileColumn, locationAddressColumn, functionNameColumn, i),
         flat,
         flatDiff,
@@ -685,7 +616,21 @@ export const Table = React.memo(function Table({
     }
 
     return rows;
-  }, [table]);
+  }, [table, colorByColors, colorBy]);
+
+  useEffect(() => {
+    setTimeout(() => {
+      if (currentSearchString == null || rows.length === 0) return;
+
+      const firstHighlightedRowIndex = rows.findIndex(row => {
+        return !isDummyRow(row) && isSearchMatch(currentSearchString, row.name);
+      });
+
+      if (firstHighlightedRowIndex !== -1) {
+        setScrollToIndex(firstHighlightedRowIndex);
+      }
+    }, 1000); // Adding a delay to allow the table to render seems to be the only way to get this to work i.e. scrolling down to the highlighted row
+  }, [currentSearchString, rows]);
 
   if (loading) {
     return (
@@ -742,86 +687,5 @@ export const Table = React.memo(function Table({
     </AnimatePresence>
   );
 });
-
-const addPlusSign = (num: string): string => {
-  if (num.charAt(0) === '0' || num.charAt(0) === '-') {
-    return num;
-  }
-
-  return `+${num}`;
-};
-
-export const RowName = (
-  mappingFileColumn: Vector | null,
-  locationAddressColumn: Vector | null,
-  functionNameColumn: Vector | null,
-  row: number
-): string => {
-  if (mappingFileColumn === null) {
-    console.error('mapping_file column not found');
-    return '';
-  }
-
-  const mappingFile: string | null = mappingFileColumn?.get(row);
-  let mapping = '';
-  // Show the last item in the mapping file only if there are more than 1 mappings
-  if (mappingFile != null && mappingFileColumn.data.length > 1) {
-    mapping = `[${getLastItem(mappingFile) ?? ''}]`;
-  }
-  const functionName: string | null = functionNameColumn?.get(row) ?? '';
-  if (functionName !== null && functionName !== '') {
-    return `${mapping} ${functionName}`;
-  }
-
-  const address: bigint = locationAddressColumn?.get(row) ?? 0;
-
-  return hexifyAddress(address);
-};
-
-const getRowsCount = (rows: Array<RowType<Row>>): number => {
-  if (rows.length < 6) {
-    return 6;
-  }
-
-  return rows.length;
-};
-
-function getScrollTargetIndex(
-  rows: Array<RowType<Row>>,
-  parentRow: RowType<Row>,
-  newRow: RowType<Row>
-): number {
-  const parentIndex = rows.indexOf(parentRow);
-  const newRowIndex = rows.indexOf(newRow);
-  let targetIndex = newRowIndex;
-  if (parentIndex > newRowIndex) {
-    // Adjusting the number of subs rows to scroll to the main row after expansion.
-    targetIndex -= getRowsCount(newRow.subRows);
-  }
-  if (parentIndex < newRowIndex) {
-    // If the parent row is above the new row, we need to adjust the number of subrows of the parent.
-    targetIndex += getRowsCount(parentRow.subRows);
-  }
-  if (targetIndex < 0) {
-    targetIndex = 0;
-  }
-  return targetIndex;
-}
-
-function isSubRow(row: Row): boolean {
-  return row.isTopSubRow === true || row.isBottomSubRow === true;
-}
-
-function isLastSubRow(row: RowType<Row>, rows: Array<RowType<Row>>): boolean {
-  const index = rows.indexOf(row);
-  const nextRow = rows[index + 1];
-  return nextRow == null || (!isSubRow(nextRow.original) && !nextRow.getIsExpanded());
-}
-
-function isFirstSubRow(row: RowType<Row>, rows: Array<RowType<Row>>): boolean {
-  const index = rows.indexOf(row);
-  const prevRow = rows[index - 1];
-  return prevRow == null || (!isSubRow(prevRow.original) && !prevRow.getIsExpanded());
-}
 
 export default Table;

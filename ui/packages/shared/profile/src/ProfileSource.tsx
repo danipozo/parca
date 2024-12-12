@@ -20,7 +20,7 @@ import {
   Timestamp,
 } from '@parca/client';
 import {Matcher, NewParser, ProfileType, Query} from '@parca/parser';
-import {formatDate} from '@parca/utilities';
+import {formatDate, formatDuration} from '@parca/utilities';
 
 export interface ProfileSource {
   QueryRequest: () => QueryRequest;
@@ -184,7 +184,7 @@ export class ProfileDiffSource implements ProfileSource {
     const bDesc = this.b.toString();
 
     if (aDesc === bDesc) {
-      return 'profile comparison';
+      return 'Profile comparison';
     }
 
     return `${this.a.toString()} compared with ${this.b.toString()}`;
@@ -255,13 +255,15 @@ export class MergedProfileSource implements ProfileSource {
 
     let timePart = '';
     if (this.mergeFrom !== 0) {
-      timePart = ` from ${formatDate(
-        this.mergeFrom,
+      timePart = `over ${formatDuration({
+        milliseconds: this.mergeTo - this.mergeFrom,
+      })} from ${formatDate(this.mergeFrom, timeFormat(timezone), timezone)} to ${formatDate(
+        this.mergeTo,
         timeFormat(timezone),
         timezone
-      )} to ${formatDate(this.mergeTo, timeFormat(timezone), timezone)}`;
+      )}`;
     }
 
-    return `merged profiles${queryPart}${timePart}`;
+    return `Merged profiles${queryPart}${timePart}`;
   }
 }

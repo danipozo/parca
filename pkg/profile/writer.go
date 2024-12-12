@@ -14,9 +14,9 @@
 package profile
 
 import (
-	"github.com/apache/arrow/go/v16/arrow"
-	"github.com/apache/arrow/go/v16/arrow/array"
-	"github.com/apache/arrow/go/v16/arrow/memory"
+	"github.com/apache/arrow/go/v17/arrow"
+	"github.com/apache/arrow/go/v17/arrow/array"
+	"github.com/apache/arrow/go/v17/arrow/memory"
 )
 
 type Writer struct {
@@ -39,9 +39,7 @@ type Writer struct {
 	FunctionFilename   *array.BinaryDictionaryBuilder
 	FunctionStartLine  *array.Int64Builder
 	Value              *array.Int64Builder
-	ValuePerSecond     *array.Float64Builder
 	Diff               *array.Int64Builder
-	DiffPerSecond      *array.Float64Builder
 }
 
 func (w *Writer) Release() {
@@ -52,7 +50,7 @@ func NewWriter(pool memory.Allocator, labelNames []string) Writer {
 	labelFields := make([]arrow.Field, len(labelNames))
 	for i, name := range labelNames {
 		labelFields[i] = arrow.Field{
-			Name:     ColumnPprofLabelsPrefix + name,
+			Name:     ColumnLabelsPrefix + name,
 			Type:     &arrow.DictionaryType{IndexType: arrow.PrimitiveTypes.Uint32, ValueType: arrow.BinaryTypes.Binary},
 			Nullable: true,
 		}
@@ -88,9 +86,7 @@ func NewWriter(pool memory.Allocator, labelNames []string) Writer {
 	functionStartLine := line.FieldBuilder(4).(*array.Int64Builder)
 
 	value := b.Field(labelNum + 1).(*array.Int64Builder)
-	valuePerSecond := b.Field(labelNum + 2).(*array.Float64Builder)
-	diff := b.Field(labelNum + 3).(*array.Int64Builder)
-	diffPerSecond := b.Field(labelNum + 4).(*array.Float64Builder)
+	diff := b.Field(labelNum + 2).(*array.Int64Builder)
 
 	return Writer{
 		RecordBuilder:      b,
@@ -112,9 +108,7 @@ func NewWriter(pool memory.Allocator, labelNames []string) Writer {
 		FunctionFilename:   functionFilename,
 		FunctionStartLine:  functionStartLine,
 		Value:              value,
-		ValuePerSecond:     valuePerSecond,
 		Diff:               diff,
-		DiffPerSecond:      diffPerSecond,
 	}
 }
 
@@ -138,9 +132,7 @@ type LocationsWriter struct {
 	FunctionFilename   *array.BinaryDictionaryBuilder
 	FunctionStartLine  *array.Int64Builder
 	Value              *array.Int64Builder
-	ValuePerSecond     *array.Float64Builder
 	Diff               *array.Int64Builder
-	DiffPerSecond      *array.Float64Builder
 }
 
 func NewLocationsWriter(pool memory.Allocator) LocationsWriter {

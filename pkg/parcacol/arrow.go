@@ -19,9 +19,9 @@ import (
 	"strings"
 	"unsafe"
 
-	"github.com/apache/arrow/go/v16/arrow"
-	"github.com/apache/arrow/go/v16/arrow/array"
-	"github.com/apache/arrow/go/v16/arrow/memory"
+	"github.com/apache/arrow/go/v17/arrow"
+	"github.com/apache/arrow/go/v17/arrow/array"
+	"github.com/apache/arrow/go/v17/arrow/memory"
 	"go.opentelemetry.io/otel/trace"
 
 	pb "github.com/parca-dev/parca/gen/proto/go/parca/metastore/v1alpha1"
@@ -107,8 +107,8 @@ func (c *ArrowToProfileConverter) Convert(
 
 		labelIndexes := make(map[string]int)
 		for i, field := range schema.Fields() {
-			if strings.HasPrefix(field.Name, profile.ColumnPprofLabelsPrefix) {
-				labelIndexes[strings.TrimPrefix(field.Name, profile.ColumnPprofLabelsPrefix)] = i
+			if strings.HasPrefix(field.Name, profile.ColumnLabelsPrefix) {
+				labelIndexes[strings.TrimPrefix(field.Name, profile.ColumnLabelsPrefix)] = i
 			}
 		}
 
@@ -261,7 +261,7 @@ func BuildArrowLocations(allocator memory.Allocator, stacktraces []*pb.Stacktrac
 				w.MappingBuildID.AppendNull()
 			}
 
-			if loc.Lines != nil && len(loc.Lines) > 0 {
+			if len(loc.Lines) > 0 {
 				w.Lines.Append(true)
 				for _, l := range loc.Lines {
 					w.Line.Append(true)

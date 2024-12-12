@@ -27,21 +27,16 @@ import {
   useAppDispatch,
   useAppSelector,
 } from '@parca/store';
-import {
-  getLastItem,
-  scaleLinear,
-  selectQueryParam,
-  type ColorConfig,
-  type NavigateFunction,
-} from '@parca/utilities';
+import {getLastItem, scaleLinear, type ColorConfig} from '@parca/utilities';
 
 import GraphTooltipArrow from '../../GraphTooltipArrow';
 import GraphTooltipArrowContent from '../../GraphTooltipArrow/Content';
 import {DockedGraphTooltip} from '../../GraphTooltipArrow/DockedGraphTooltip';
-import {useProfileViewContext} from '../../ProfileView/ProfileViewContext';
+import {useProfileViewContext} from '../../ProfileView/context/ProfileViewContext';
 import ContextMenu from './ContextMenu';
-import {IcicleNode, RowHeight, mappingColors} from './IcicleGraphNodes';
-import {arrowToString, extractFeature} from './utils';
+import {IcicleNode, RowHeight, colorByColors} from './IcicleGraphNodes';
+import {useFilenamesList} from './useMappingList';
+import {arrowToString, extractFeature, extractFilenameFeature} from './utils';
 
 export const FIELD_LABELS_ONLY = 'labels_only';
 export const FIELD_MAPPING_FILE = 'mapping_file';
@@ -49,6 +44,7 @@ export const FIELD_MAPPING_BUILD_ID = 'mapping_build_id';
 export const FIELD_LOCATION_ADDRESS = 'location_address';
 export const FIELD_LOCATION_LINE = 'location_line';
 export const FIELD_INLINED = 'inlined';
+export const FIELD_TIMESTAMP = 'timestamp';
 export const FIELD_FUNCTION_NAME = 'function_name';
 export const FIELD_FUNCTION_SYSTEM_NAME = 'function_system_name';
 export const FIELD_FUNCTION_FILE_NAME = 'function_file_name';
@@ -56,11 +52,8 @@ export const FIELD_FUNCTION_START_LINE = 'function_startline';
 export const FIELD_CHILDREN = 'children';
 export const FIELD_LABELS = 'labels';
 export const FIELD_CUMULATIVE = 'cumulative';
-export const FIELD_CUMULATIVE_PER_SECOND = 'cumulative_per_second';
 export const FIELD_FLAT = 'flat';
-export const FIELD_FLAT_PER_SECOND = 'flat_per_second';
 export const FIELD_DIFF = 'diff';
-export const FIELD_DIFF_PER_SECOND = 'diff_per_second';
 
 interface IcicleGraphArrowProps {
   arrow: FlamegraphArrow;
@@ -70,22 +63,36 @@ interface IcicleGraphArrowProps {
   width?: number;
   curPath: string[];
   setCurPath: (path: string[]) => void;
-  navigateTo?: NavigateFunction;
   sortBy: string;
   flamegraphLoading: boolean;
   isHalfScreen: boolean;
   mappingsListFromMetadata: string[];
+  compareAbsolute: boolean;
 }
 
 export const getMappingColors = (
   mappingsList: string[],
   isDarkMode: boolean,
   currentColorProfile: ColorConfig
-): mappingColors => {
+): colorByColors => {
   const mappingFeatures = mappingsList.map(mapping => extractFeature(mapping));
 
-  const colors: mappingColors = {};
+  const colors: colorByColors = {};
   Object.entries(mappingFeatures).forEach(([_, feature]) => {
+    colors[feature.name] = getColorForFeature(feature.name, isDarkMode, currentColorProfile.colors);
+  });
+  return colors;
+};
+
+export const getFilenameColors = (
+  filenamesList: string[],
+  isDarkMode: boolean,
+  currentColorProfile: ColorConfig
+): colorByColors => {
+  const filenameFeatures = filenamesList.map(filename => extractFilenameFeature(filename));
+
+  const colors: colorByColors = {};
+  Object.entries(filenameFeatures).forEach(([_, feature]) => {
     colors[feature.name] = getColorForFeature(feature.name, isDarkMode, currentColorProfile.colors);
   });
   return colors;
@@ -101,10 +108,10 @@ export const IcicleGraphArrow = memo(function IcicleGraphArrow({
   setCurPath,
   curPath,
   profileType,
-  navigateTo,
   sortBy,
   flamegraphLoading,
   mappingsListFromMetadata,
+  compareAbsolute,
 }: IcicleGraphArrowProps): React.JSX.Element {
   const [isContextMenuOpen, setIsContextMenuOpen] = useState<boolean>(false);
   const dispatch = useAppDispatch();
@@ -125,15 +132,17 @@ export const IcicleGraphArrow = memo(function IcicleGraphArrow({
   const svg = useRef(null);
   const ref = useRef<SVGGElement>(null);
 
-  const [binaryFrameFilter, setBinaryFrameFilter] = useURLState({
-    param: 'binary_frame_filter',
-    navigateTo,
-  });
+  const [binaryFrameFilter, setBinaryFrameFilter] = useURLState('binary_frame_filter');
 
-  const currentSearchString = (selectQueryParam('search_string') as string) ?? '';
+  const [currentSearchString] = useURLState('search_string');
   const {compareMode} = useProfileViewContext();
   const currentColorProfile = useCurrentColorProfile();
   const colorForSimilarNodes = currentColorProfile.colorForSimilarNodes;
+
+  const [colorBy, _] = useURLState('color_by');
+  const colorByValue = colorBy === undefined || colorBy === '' ? 'binary' : (colorBy as string);
+
+  const filenamesList = useFilenamesList(table);
 
   const mappingsList = useMemo(() => {
     // Read the mappings from the dictionary that contains all mapping strings.
@@ -164,10 +173,24 @@ export const IcicleGraphArrow = memo(function IcicleGraphArrow({
     return mappings;
   }, [table]);
 
+  const filenameColors = useMemo(() => {
+    const colors = getFilenameColors(filenamesList, isDarkMode, currentColorProfile);
+    return colors;
+  }, [isDarkMode, filenamesList, currentColorProfile]);
+
   const mappingColors = useMemo(() => {
     const colors = getMappingColors(mappingsList, isDarkMode, currentColorProfile);
     return colors;
   }, [isDarkMode, mappingsList, currentColorProfile]);
+
+  const colorByList = {
+    filename: filenameColors,
+    binary: mappingColors,
+  };
+
+  type ColorByKey = keyof typeof colorByList;
+
+  const colorByColors: colorByColors = colorByList[colorByValue as ColorByKey];
 
   useEffect(() => {
     if (ref.current != null) {
@@ -222,9 +245,6 @@ export const IcicleGraphArrow = memo(function IcicleGraphArrow({
   const highlightSimilarStacksSetName = useMemo(() => {
     return highlightSimilarStacksPreference ? setHoveringName : noop;
   }, [highlightSimilarStacksPreference]);
-  const highlightSimilarStacksSetLevel = useMemo(() => {
-    return highlightSimilarStacksPreference ? setHoveringLevel : noop;
-  }, [highlightSimilarStacksPreference]);
   const highlightSimilarStacksRow = highlightSimilarStacksPreference ? hoveringRow : null;
   const path = useMemo(() => {
     return [];
@@ -246,7 +266,8 @@ export const IcicleGraphArrow = memo(function IcicleGraphArrow({
             <IcicleNode
               table={table}
               row={0} // root is always row 0 in the arrow record
-              mappingColors={mappingColors}
+              colors={colorByColors}
+              colorBy={colorByValue}
               x={0}
               y={0}
               totalWidth={width ?? 1}
@@ -258,9 +279,9 @@ export const IcicleGraphArrow = memo(function IcicleGraphArrow({
               path={path}
               level={0}
               isRoot={true}
-              searchString={currentSearchString}
+              searchString={(currentSearchString as string) ?? ''}
               setHoveringRow={setHoveringRow}
-              setHoveringLevel={highlightSimilarStacksSetLevel}
+              setHoveringLevel={setHoveringLevel}
               sortBy={sortBy}
               darkMode={isDarkMode}
               compareMode={compareMode}
@@ -281,7 +302,8 @@ export const IcicleGraphArrow = memo(function IcicleGraphArrow({
     height,
     displayMenu,
     table,
-    mappingColors,
+    colorByColors,
+    colorByValue,
     setCurPath,
     curPath,
     total,
@@ -297,13 +319,12 @@ export const IcicleGraphArrow = memo(function IcicleGraphArrow({
     colorForSimilarNodes,
     highlightSimilarStacksPreference,
     path,
-    highlightSimilarStacksSetLevel,
     highlightSimilarStacksSetName,
   ]);
 
   return (
     <>
-      <div onMouseLeave={() => dispatch(setHoveringNode(undefined))}>
+      <div className="relative z-[9]" onMouseLeave={() => dispatch(setHoveringNode(undefined))}>
         <ContextMenu
           menuId={MENU_ID}
           table={table}
@@ -312,7 +333,7 @@ export const IcicleGraphArrow = memo(function IcicleGraphArrow({
           total={total}
           totalUnfiltered={total + filtered}
           profileType={profileType}
-          navigateTo={navigateTo as NavigateFunction}
+          compareAbsolute={compareAbsolute}
           trackVisibility={trackVisibility}
           curPath={curPath}
           setCurPath={setCurPath}
@@ -329,6 +350,7 @@ export const IcicleGraphArrow = memo(function IcicleGraphArrow({
             totalUnfiltered={total + filtered}
             profileType={profileType}
             unit={arrow.unit}
+            compareAbsolute={compareAbsolute}
           />
         ) : (
           !isContextMenuOpen && (
@@ -341,8 +363,8 @@ export const IcicleGraphArrow = memo(function IcicleGraphArrow({
                 total={total}
                 totalUnfiltered={total + filtered}
                 profileType={profileType}
-                navigateTo={navigateTo as NavigateFunction}
                 unit={arrow.unit}
+                compareAbsolute={compareAbsolute}
               />
             </GraphTooltipArrow>
           )

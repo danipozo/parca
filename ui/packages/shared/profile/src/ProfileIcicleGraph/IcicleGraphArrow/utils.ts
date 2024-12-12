@@ -13,7 +13,13 @@
 
 import {Table} from 'apache-arrow';
 
-import {EVERYTHING_ELSE, FEATURE_TYPES, type Feature} from '@parca/store';
+import {
+  BINARY_FEATURE_TYPES,
+  EVERYTHING_ELSE,
+  FILENAMES_FEATURE_TYPES,
+  type BinaryFeature,
+  type FilenameFeature,
+} from '@parca/store';
 import {divide, getLastItem, valueFormatter} from '@parca/utilities';
 
 import {hexifyAddress} from '../../utils';
@@ -30,25 +36,26 @@ export function nodeLabel(
   level: number,
   showBinaryName: boolean
 ): string {
-  const functionName: string | null = arrowToString(table.getChild(FIELD_FUNCTION_NAME)?.get(row));
   const labelsOnly: boolean | null = table.getChild(FIELD_LABELS_ONLY)?.get(row);
-  const pprofLabelPrefix = 'pprof_labels.';
-  const labelColumnNames = table.schema.fields.filter(field =>
-    field.name.startsWith(pprofLabelPrefix)
-  );
-  if (functionName !== null && functionName !== '') {
-    return functionName;
-  }
-
   if (level === 1 && labelsOnly !== null && labelsOnly) {
+    const labelPrefix = 'labels.';
+    const labelColumnNames = table.schema.fields.filter(field =>
+      field.name.startsWith(labelPrefix)
+    );
+
     return labelColumnNames
       .map((field, i) => [
-        labelColumnNames[i].name.slice(pprofLabelPrefix.length),
+        labelColumnNames[i].name.slice(labelPrefix.length),
         arrowToString(table.getChild(field.name)?.get(row)) ?? '',
       ])
       .filter(value => value[1] !== '')
       .map(([k, v]) => `${k}="${v}"`)
       .join(', ');
+  }
+
+  const functionName: string | null = arrowToString(table.getChild(FIELD_FUNCTION_NAME)?.get(row));
+  if (functionName !== null && functionName !== '') {
+    return functionName;
   }
 
   let mappingString = '';
@@ -64,12 +71,20 @@ export function nodeLabel(
   return fallback === '' ? '<unknown>' : fallback;
 }
 
-export const extractFeature = (mapping: string): Feature => {
+export const extractFeature = (mapping: string): BinaryFeature => {
   if (mapping != null && mapping !== '') {
-    return {name: mapping, type: FEATURE_TYPES.Binary};
+    return {name: mapping, type: BINARY_FEATURE_TYPES.Binary};
   }
 
-  return {name: EVERYTHING_ELSE, type: FEATURE_TYPES.Misc};
+  return {name: EVERYTHING_ELSE, type: BINARY_FEATURE_TYPES.Misc};
+};
+
+export const extractFilenameFeature = (filename: string): FilenameFeature => {
+  if (filename != null && filename !== '') {
+    return {name: filename, type: FILENAMES_FEATURE_TYPES.Filename};
+  }
+
+  return {name: EVERYTHING_ELSE, type: FILENAMES_FEATURE_TYPES.Misc};
 };
 
 export const getTextForCumulative = (
@@ -102,7 +117,7 @@ export const arrowToString = (buffer: any): string | null => {
     return buffer;
   }
   if (ArrayBuffer.isView(buffer)) {
-    return String.fromCharCode.apply(null, buffer as unknown as number[]);
+    return new TextDecoder().decode(buffer);
   }
   return '';
 };

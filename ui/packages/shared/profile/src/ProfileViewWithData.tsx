@@ -15,37 +15,48 @@ import {useEffect, useMemo, useState} from 'react';
 
 import {QueryRequest_ReportType, QueryServiceClient} from '@parca/client';
 import {useGrpcMetadata, useParcaContext, useURLState} from '@parca/components';
-import {saveAsBlob, type NavigateFunction} from '@parca/utilities';
+import {saveAsBlob} from '@parca/utilities';
 
-import {FIELD_FUNCTION_NAME} from './ProfileIcicleGraph/IcicleGraphArrow';
+import {FIELD_FUNCTION_NAME, FIELD_TIMESTAMP} from './ProfileIcicleGraph/IcicleGraphArrow';
 import {ProfileSource} from './ProfileSource';
 import {ProfileView} from './ProfileView';
+import {TimelineGuideData} from './ProfileView/context/ProfileViewContext';
 import {useQuery} from './useQuery';
 import {downloadPprof} from './utils';
 
 interface ProfileViewWithDataProps {
   queryClient: QueryServiceClient;
   profileSource: ProfileSource;
-  navigateTo?: NavigateFunction;
   compare?: boolean;
+  showVisualizationSelector?: boolean;
+  isGroupByTimestamp?: boolean;
+  timelineGuide?: TimelineGuideData;
 }
 
 export const ProfileViewWithData = ({
   queryClient,
   profileSource,
-  navigateTo,
+  showVisualizationSelector,
+  isGroupByTimestamp,
+  timelineGuide,
 }: ProfileViewWithDataProps): JSX.Element => {
   const metadata = useGrpcMetadata();
-  const [dashboardItems = ['icicle']] = useURLState({param: 'dashboard_items', navigateTo});
-  const [sourceBuildID] = useURLState({param: 'source_buildid', navigateTo}) as unknown as [string];
-  const [sourceFilename] = useURLState({param: 'source_filename', navigateTo}) as unknown as [
-    string
-  ];
-  const [groupBy = [FIELD_FUNCTION_NAME]] = useURLState({param: 'group_by', navigateTo});
+  const [dashboardItems] = useURLState<string[]>('dashboard_items', {
+    alwaysReturnArray: true,
+  });
+  const [sourceBuildID] = useURLState<string>('source_buildid');
+  const [sourceFilename] = useURLState<string>('source_filename');
+  const [groupBy] = useURLState<string[]>('group_by', {
+    defaultValue: [
+      isGroupByTimestamp === true ? FIELD_TIMESTAMP : (null as unknown as string),
+      FIELD_FUNCTION_NAME,
+    ].filter(Boolean),
+    alwaysReturnArray: true,
+  });
 
-  const [invertStack] = useURLState({param: 'invert_call_stack', navigateTo});
+  const [invertStack] = useURLState('invert_call_stack');
   const invertCallStack = invertStack === 'true';
-  const [binaryFrameFilterStr] = useURLState({param: 'binary_frame_filter', navigateTo});
+  const [binaryFrameFilterStr] = useURLState<string[] | string>('binary_frame_filter');
 
   const binaryFrameFilter: string[] =
     typeof binaryFrameFilterStr === 'string'
@@ -63,9 +74,6 @@ export const ProfileViewWithData = ({
     return (1 / width) * 100;
   }, []);
 
-  // make sure we get a string[]
-  const groupByParam: string[] = typeof groupBy === 'string' ? [groupBy] : groupBy;
-
   const {
     isLoading: flamegraphLoading,
     response: flamegraphResponse,
@@ -73,21 +81,18 @@ export const ProfileViewWithData = ({
   } = useQuery(queryClient, profileSource, QueryRequest_ReportType.FLAMEGRAPH_ARROW, {
     skip: !dashboardItems.includes('icicle'),
     nodeTrimThreshold,
-    groupBy: groupByParam,
+    groupBy,
     invertCallStack,
     binaryFrameFilter,
   });
 
-  const {isLoading: profilemetadataLoading, response: profilemetadataResponse} = useQuery(
+  const {isLoading: profileMetadataLoading, response: profileMetadataResponse} = useQuery(
     queryClient,
     profileSource,
     QueryRequest_ReportType.PROFILE_METADATA,
     {
-      skip: !dashboardItems.includes('icicle'),
       nodeTrimThreshold,
-      groupBy: groupByParam,
-      invertCallStack,
-      binaryFrameFilter: undefined,
+      groupBy,
     }
   );
 
@@ -99,6 +104,7 @@ export const ProfileViewWithData = ({
     error: tableError,
   } = useQuery(queryClient, profileSource, QueryRequest_ReportType.TABLE_ARROW, {
     skip: !dashboardItems.includes('table'),
+    binaryFrameFilter,
   });
 
   const {
@@ -189,7 +195,7 @@ export const ProfileViewWithData = ({
       total={total}
       filtered={filtered}
       flamegraphData={{
-        loading: flamegraphLoading && profilemetadataLoading,
+        loading: flamegraphLoading && profileMetadataLoading,
         data:
           flamegraphResponse?.report.oneofKind === 'flamegraph'
             ? flamegraphResponse?.report?.flamegraph
@@ -201,11 +207,15 @@ export const ProfileViewWithData = ({
         total: BigInt(flamegraphResponse?.total ?? '0'),
         filtered: BigInt(flamegraphResponse?.filtered ?? '0'),
         error: flamegraphError,
-        mappings:
-          profilemetadataResponse?.report.oneofKind === 'profileMetadata'
-            ? profilemetadataResponse?.report?.profileMetadata?.mappingFiles
+        metadataMappingFiles:
+          profileMetadataResponse?.report.oneofKind === 'profileMetadata'
+            ? profileMetadataResponse?.report?.profileMetadata?.mappingFiles
             : undefined,
-        mappingsLoading: profilemetadataLoading,
+        metadataLabels:
+          profileMetadataResponse?.report.oneofKind === 'profileMetadata'
+            ? profileMetadataResponse?.report?.profileMetadata?.labels
+            : undefined,
+        metadataLoading: profileMetadataLoading,
       }}
       topTableData={{
         loading: tableLoading,
@@ -237,9 +247,10 @@ export const ProfileViewWithData = ({
       }}
       profileSource={profileSource}
       queryClient={queryClient}
-      navigateTo={navigateTo}
       onDownloadPProf={() => void downloadPProfClick()}
       pprofDownloading={pprofDownloading}
+      showVisualizationSelector={showVisualizationSelector}
+      timelineGuide={timelineGuide}
     />
   );
 };

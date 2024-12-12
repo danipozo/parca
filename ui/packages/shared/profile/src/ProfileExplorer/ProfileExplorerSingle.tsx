@@ -11,8 +11,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import {useState} from 'react';
+
 import {QueryServiceClient} from '@parca/client';
-import {Card} from '@parca/components';
 import type {NavigateFunction} from '@parca/utilities';
 
 import {ProfileSelection, ProfileViewWithData} from '..';
@@ -35,9 +36,11 @@ const ProfileExplorerSingle = ({
   profile,
   navigateTo,
 }: ProfileExplorerSingleProps): JSX.Element => {
+  const [showMetricsGraph, setShowMetricsGraph] = useState(true);
+
   return (
     <>
-      <Card className="mt-2 px-6 py-4">
+      <div className="relative">
         <ProfileSelector
           queryClient={queryClient}
           querySelection={query}
@@ -49,16 +52,13 @@ const ProfileExplorerSingle = ({
           enforcedProfileName={''} // TODO
           navigateTo={navigateTo}
           suffix="_a"
+          showMetricsGraph={showMetricsGraph}
+          setDisplayHideMetricsGraphButton={setShowMetricsGraph}
         />
-      </Card>
+      </div>
+
       {profile != null ? (
-        <Card className="mt-2 px-6 py-4">
-          <ProfileViewWithData
-            queryClient={queryClient}
-            profileSource={profile.ProfileSource()}
-            navigateTo={navigateTo}
-          />
-        </Card>
+        <ProfileViewWithData queryClient={queryClient} profileSource={profile.ProfileSource()} />
       ) : (
         <></>
       )}

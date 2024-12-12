@@ -3,6 +3,82 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [0.16.312](https://github.com/parca-dev/parca/compare/@parca/components@0.16.311...@parca/components@0.16.312) (2024-12-10)
+
+**Note:** Version bump only for package @parca/components
+
+## [0.16.311](https://github.com/parca-dev/parca/compare/@parca/components@0.16.310...@parca/components@0.16.311) (2024-11-21)
+
+**Note:** Version bump only for package @parca/components
+
+## 0.16.310 (2024-11-21)
+
+**Note:** Version bump only for package @parca/components
+
+## [0.16.309](https://github.com/parca-dev/parca/compare/@parca/components@0.16.308...@parca/components@0.16.309) (2024-11-19)
+
+**Note:** Version bump only for package @parca/components
+
+## 0.16.308 (2024-11-14)
+
+**Note:** Version bump only for package @parca/components
+
+## [0.16.307](https://github.com/parca-dev/parca/compare/@parca/components@0.16.306...@parca/components@0.16.307) (2024-10-29)
+
+**Note:** Version bump only for package @parca/components
+
+## 0.16.306 (2024-10-29)
+
+**Note:** Version bump only for package @parca/components
+
+## [0.16.305](https://github.com/parca-dev/parca/compare/@parca/components@0.16.302...@parca/components@0.16.305) (2024-09-12)
+
+**Note:** Version bump only for package @parca/components
+
+## [0.16.304](https://github.com/parca-dev/parca/compare/@parca/components@0.16.300...@parca/components@0.16.304) (2024-09-02)
+
+**Note:** Version bump only for package @parca/components
+
+## 0.16.303 (2024-08-23)
+
+**Note:** Version bump only for package @parca/components
+
+## [0.16.302](https://github.com/parca-dev/parca/compare/@parca/components@0.16.301...@parca/components@0.16.302) (2024-08-19)
+
+**Note:** Version bump only for package @parca/components
+
+## [0.16.301](https://github.com/parca-dev/parca/compare/@parca/components@0.16.300...@parca/components@0.16.301) (2024-08-19)
+
+**Note:** Version bump only for package @parca/components
+
+## 0.16.300 (2024-08-12)
+
+**Note:** Version bump only for package @parca/components
+
+## 0.16.299 (2024-08-09)
+
+**Note:** Version bump only for package @parca/components
+
+## [0.16.298](https://github.com/parca-dev/parca/compare/@parca/components@0.16.297...@parca/components@0.16.298) (2024-08-07)
+
+**Note:** Version bump only for package @parca/components
+
+## [0.16.297](https://github.com/parca-dev/parca/compare/@parca/components@0.16.294...@parca/components@0.16.297) (2024-08-06)
+
+**Note:** Version bump only for package @parca/components
+
+## [0.16.296](https://github.com/parca-dev/parca/compare/@parca/components@0.16.295...@parca/components@0.16.296) (2024-07-30)
+
+**Note:** Version bump only for package @parca/components
+
+## [0.16.295](https://github.com/parca-dev/parca/compare/@parca/components@0.16.294...@parca/components@0.16.295) (2024-07-29)
+
+**Note:** Version bump only for package @parca/components
+
+## 0.16.294 (2024-07-29)
+
+**Note:** Version bump only for package @parca/components
+
 ## 0.16.293 (2024-07-10)
 
 **Note:** Version bump only for package @parca/components

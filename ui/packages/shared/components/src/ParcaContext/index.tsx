@@ -60,19 +60,23 @@ interface Props {
     emitQuery: (query: string) => void;
     createViewComponent?: ReactNode;
     disableProfileTypesDropdown?: boolean;
+    labelnames?: string[];
+    disableExplorativeQuerying?: boolean;
   };
   profileViewExternalMainActions?: ReactNode;
   profileViewExternalSubActions?: ReactNode;
   sourceViewContextMenuItems?: SourceViewContextMenuItem[];
   additionalFlamegraphColorProfiles?: Record<string, ColorConfig>;
   timezone?: string;
+  preferencesModal?: boolean;
+  checkDebuginfoStatusHandler?: (buildId: string) => void;
 }
 
 export const defaultValue: Props = {
   loader: <Spinner />,
   noDataPrompt: <NoDataPrompt />,
   profileExplorer: {
-    PaddingX: 58,
+    PaddingX: 32,
     metricsGraph: {
       maxHeightStyle: {
         default: 'calc(47vw - 24px)',
@@ -88,6 +92,7 @@ export const defaultValue: Props = {
   navigateTo: () => {},
   enableSourcesView: false,
   isDarkMode: false,
+  preferencesModal: false,
 };
 
 const ParcaContext = createContext<Props>(defaultValue);

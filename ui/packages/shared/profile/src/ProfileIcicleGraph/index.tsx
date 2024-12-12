@@ -11,35 +11,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import React, {useCallback, useEffect, useMemo, useState} from 'react';
+import React, {useEffect, useMemo, useState} from 'react';
 
-import {Icon} from '@iconify/react';
 import {AnimatePresence, motion} from 'framer-motion';
 
 import {Flamegraph, FlamegraphArrow} from '@parca/client';
-import {
-  Button,
-  IcicleGraphSkeleton,
-  IconButton,
-  useParcaContext,
-  useURLState,
-} from '@parca/components';
-import {USER_PREFERENCES, useUserPreference} from '@parca/hooks';
+import {IcicleGraphSkeleton, useParcaContext, useURLState} from '@parca/components';
 import {ProfileType} from '@parca/parser';
-import {
-  capitalizeOnlyFirstLetter,
-  divide,
-  selectQueryParam,
-  type NavigateFunction,
-} from '@parca/utilities';
+import {capitalizeOnlyFirstLetter, divide} from '@parca/utilities';
 
-import {useProfileViewContext} from '../ProfileView/ProfileViewContext';
-import DiffLegend from '../components/DiffLegend';
-import GroupByDropdown from './ActionButtons/GroupByDropdown';
-import SortBySelect from './ActionButtons/SortBySelect';
-import IcicleGraph from './IcicleGraph';
-import IcicleGraphArrow, {FIELD_FUNCTION_NAME} from './IcicleGraphArrow';
-import ColorStackLegend from './IcicleGraphArrow/ColorStackLegend';
+import DiffLegend from '../ProfileView/components/DiffLegend';
+import {useProfileViewContext} from '../ProfileView/context/ProfileViewContext';
+import {TimelineGuide} from '../TimelineGuide';
+import {IcicleGraph} from './IcicleGraph';
+import {FIELD_FUNCTION_NAME, IcicleGraphArrow} from './IcicleGraphArrow';
 import useMappingList from './IcicleGraphArrow/useMappingList';
 
 const numberFormatter = new Intl.NumberFormat('en-US');
@@ -55,155 +40,16 @@ interface ProfileIcicleGraphProps {
   profileType?: ProfileType;
   curPath: string[] | [];
   setNewCurPath: (path: string[]) => void;
-  navigateTo?: NavigateFunction;
   loading: boolean;
   setActionButtons?: (buttons: React.JSX.Element) => void;
   error?: any;
   isHalfScreen: boolean;
-  mappings?: string[];
-  mappingsLoading?: boolean;
+  metadataMappingFiles?: string[];
+  metadataLoading?: boolean;
 }
 
 const ErrorContent = ({errorMessage}: {errorMessage: string}): JSX.Element => {
   return <div className="flex justify-center p-10">{errorMessage}</div>;
-};
-
-const ShowHideLegendButton = ({
-  navigateTo,
-  isHalfScreen,
-}: {
-  navigateTo?: NavigateFunction;
-  isHalfScreen: boolean;
-}): JSX.Element => {
-  const [colorStackLegend, setStoreColorStackLegend] = useURLState({
-    param: 'color_stack_legend',
-    navigateTo,
-  });
-  const [binaryFrameFilter, setBinaryFrameFilter] = useURLState({
-    param: 'binary_frame_filter',
-    navigateTo,
-  });
-
-  const {compareMode} = useProfileViewContext();
-
-  const isColorStackLegendEnabled = colorStackLegend === 'true';
-
-  const [colorProfileName] = useUserPreference<string>(
-    USER_PREFERENCES.FLAMEGRAPH_COLOR_PROFILE.key
-  );
-
-  const setColorStackLegend = useCallback(
-    (value: string): void => {
-      setStoreColorStackLegend(value);
-    },
-    [setStoreColorStackLegend]
-  );
-
-  const resetLegend = (): void => {
-    setBinaryFrameFilter([]);
-  };
-
-  return (
-    <>
-      {colorProfileName === 'default' || compareMode ? null : (
-        <>
-          {isHalfScreen ? (
-            <>
-              <IconButton
-                className="rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 items-center flex border border-gray-200 dark:border-gray-600 dark:text-white justify-center !py-2 !px-3 cursor-pointer min-h-[38px]"
-                icon={isColorStackLegendEnabled ? 'ph:eye-closed' : 'ph:eye'}
-                toolTipText={isColorStackLegendEnabled ? 'Hide legend' : 'Show legend'}
-                onClick={() => setColorStackLegend(isColorStackLegendEnabled ? 'false' : 'true')}
-                id="h-show-legend-button"
-              />
-              {binaryFrameFilter !== undefined && binaryFrameFilter.length > 0 && (
-                <IconButton
-                  className="rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 items-center flex border border-gray-200 dark:border-gray-600 dark:text-white justify-center !py-2 !px-3 cursor-pointer min-h-[38px]"
-                  icon="system-uicons:reset"
-                  toolTipText="Reset the legend selection"
-                  onClick={() => resetLegend()}
-                  id="h-reset-legend-button"
-                />
-              )}
-            </>
-          ) : (
-            <>
-              <Button
-                className="gap-2 w-max"
-                variant="neutral"
-                onClick={() => setColorStackLegend(isColorStackLegendEnabled ? 'false' : 'true')}
-                id="h-show-legend-button"
-              >
-                {isColorStackLegendEnabled ? 'Hide legend' : 'Show legend'}
-                <Icon icon={isColorStackLegendEnabled ? 'ph:eye-closed' : 'ph:eye'} width={20} />
-              </Button>
-              {binaryFrameFilter !== undefined && binaryFrameFilter.length > 0 && (
-                <Button
-                  className="gap-2 w-max"
-                  variant="neutral"
-                  onClick={() => resetLegend()}
-                  id="h-reset-legend-button"
-                >
-                  Reset Legend
-                  <Icon icon="system-uicons:reset" width={20} />
-                </Button>
-              )}
-            </>
-          )}
-        </>
-      )}
-    </>
-  );
-};
-
-const GroupAndSortActionButtons = ({navigateTo}: {navigateTo?: NavigateFunction}): JSX.Element => {
-  const [storeSortBy = FIELD_FUNCTION_NAME, setStoreSortBy] = useURLState({
-    param: 'sort_by',
-    navigateTo,
-  });
-  const {compareMode} = useProfileViewContext();
-
-  const [storeGroupBy = [FIELD_FUNCTION_NAME], setStoreGroupBy] = useURLState({
-    param: 'group_by',
-    navigateTo,
-  });
-
-  const setGroupBy = useCallback(
-    (keys: string[]): void => {
-      setStoreGroupBy(keys);
-    },
-    [setStoreGroupBy]
-  );
-
-  const groupBy = useMemo(() => {
-    if (storeGroupBy !== undefined) {
-      if (typeof storeGroupBy === 'string') {
-        return [storeGroupBy];
-      }
-      return storeGroupBy;
-    }
-    return [FIELD_FUNCTION_NAME];
-  }, [storeGroupBy]);
-
-  const toggleGroupBy = useCallback(
-    (key: string): void => {
-      groupBy.includes(key)
-        ? setGroupBy(groupBy.filter(v => v !== key)) // remove
-        : setGroupBy([...groupBy, key]); // add
-    },
-    [groupBy, setGroupBy]
-  );
-
-  return (
-    <>
-      <GroupByDropdown groupBy={groupBy} toggleGroupBy={toggleGroupBy} />
-      <SortBySelect
-        compareMode={compareMode}
-        sortBy={storeSortBy as string}
-        setSortBy={setStoreSortBy}
-      />
-    </>
-  );
 };
 
 const ProfileIcicleGraph = function ProfileIcicleGraphNonMemo({
@@ -214,42 +60,32 @@ const ProfileIcicleGraph = function ProfileIcicleGraphNonMemo({
   curPath,
   setNewCurPath,
   profileType,
-  navigateTo,
   loading,
-  setActionButtons,
   error,
   width,
   isHalfScreen,
-  mappings,
+  metadataMappingFiles,
 }: ProfileIcicleGraphProps): JSX.Element {
   const {onError, authenticationErrorMessage, isDarkMode} = useParcaContext();
-  const {compareMode} = useProfileViewContext();
+  const {compareMode, timelineGuide} = useProfileViewContext();
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const isColorStackLegendEnabled = selectQueryParam('color_stack_legend') === 'true';
 
-  const mappingsList = useMappingList(mappings);
+  const mappingsList = useMappingList(metadataMappingFiles);
 
-  const [storeSortBy = FIELD_FUNCTION_NAME] = useURLState({
-    param: 'sort_by',
-    navigateTo,
-  });
-
-  const [invertStack = '', setInvertStack] = useURLState({
-    param: 'invert_call_stack',
-    navigateTo,
-  });
-  const isInvert = invertStack === 'true';
+  const [storeSortBy = FIELD_FUNCTION_NAME] = useURLState('sort_by');
+  const [colorBy, setColorBy] = useURLState('color_by');
 
   // By default, we want delta profiles (CPU) to be relatively compared.
   // For non-delta profiles, like goroutines or memory, we want the profiles to be compared absolutely.
   const compareAbsoluteDefault = profileType?.delta === false ? 'true' : 'false';
 
-  const [compareAbsolute = compareAbsoluteDefault, setCompareAbsolute] = useURLState({
-    param: 'compare_absolute',
-    navigateTo,
-    withURLUpdate: true,
-  });
+  const [compareAbsolute = compareAbsoluteDefault] = useURLState('compare_absolute');
   const isCompareAbsolute = compareAbsolute === 'true';
+
+  const mappingsListCount = useMemo(
+    () => mappingsList.filter(m => m !== '').length,
+    [mappingsList]
+  );
 
   const [
     totalFormatted,
@@ -281,82 +117,16 @@ const ProfileIcicleGraph = function ProfileIcicleGraphNonMemo({
     ];
   }, [graph, arrow, filtered, total]);
 
-  useEffect(() => {
-    setActionButtons?.(
-      <div className="flex w-full justify-end gap-2 pb-2">
-        <div className="ml-2 flex w-full flex-col items-start justify-between gap-2 md:flex-row md:items-end">
-          {<GroupAndSortActionButtons navigateTo={navigateTo} />}
-          {isHalfScreen ? (
-            <IconButton
-              icon={isInvert ? 'ph:sort-ascending' : 'ph:sort-descending'}
-              toolTipText={isInvert ? 'Original Call Stack' : 'Invert Call Stack'}
-              onClick={() => setInvertStack(isInvert ? '' : 'true')}
-              className="rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 items-center flex border border-gray-200 dark:border-gray-600 dark:text-white justify-center py-2 px-3 cursor-pointer min-h-[38px]"
-            />
-          ) : (
-            <Button
-              variant="neutral"
-              className="gap-2 w-max"
-              onClick={() => setInvertStack(isInvert ? '' : 'true')}
-            >
-              {isInvert ? 'Original Call Stack' : 'Invert Call Stack'}
-              <Icon icon={isInvert ? 'ph:sort-ascending' : 'ph:sort-descending'} width={20} />
-            </Button>
-          )}
-          <ShowHideLegendButton isHalfScreen={isHalfScreen} navigateTo={navigateTo} />
-          {compareMode && (
-            <Button
-              variant="neutral"
-              className="gap-2 w-max"
-              onClick={() => setCompareAbsolute(isCompareAbsolute ? '' : 'true')}
-            >
-              {isCompareAbsolute ? 'Compare Relative' : 'Compare Absolute'}
-              <Icon
-                icon={isCompareAbsolute ? 'fluent-mdl2:compare' : 'fluent-mdl2:compare-uneven'}
-                width={20}
-              />
-            </Button>
-          )}
-          {isHalfScreen ? (
-            <IconButton
-              icon="system-uicons:reset"
-              disabled={curPath.length === 0}
-              toolTipText="Reset View"
-              onClick={() => setNewCurPath([])}
-              className="rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 items-center flex border border-gray-200 dark:border-gray-600 dark:text-white justify-center py-2 px-3 cursor-pointer min-h-[38px]"
-            />
-          ) : (
-            <Button
-              variant="neutral"
-              className="gap-2 w-max"
-              onClick={() => setNewCurPath([])}
-              disabled={curPath.length === 0}
-            >
-              Reset View
-              <Icon icon="system-uicons:reset" width={20} />
-            </Button>
-          )}
-        </div>
-      </div>
-    );
-  }, [
-    navigateTo,
-    isInvert,
-    setInvertStack,
-    arrow,
-    curPath,
-    setNewCurPath,
-    setActionButtons,
-    loading,
-    isHalfScreen,
-    isLoading,
-    compareMode,
-    isCompareAbsolute,
-    setCompareAbsolute,
-  ]);
-
   const loadingState =
-    !loading && (arrow !== undefined || graph !== undefined) && mappings !== undefined;
+    !loading && (arrow !== undefined || graph !== undefined) && metadataMappingFiles !== undefined;
+
+  // If there is only one mapping file, we want to color by filename by default.
+  useEffect(() => {
+    if (mappingsListCount === 1 && colorBy !== 'filename') {
+      setColorBy('filename');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mappingsListCount]);
 
   useEffect(() => {
     if (loadingState) {
@@ -391,26 +161,36 @@ const ProfileIcicleGraph = function ProfileIcicleGraphNonMemo({
           curPath={curPath}
           setCurPath={setNewCurPath}
           profileType={profileType}
-          navigateTo={navigateTo}
         />
       );
 
     if (arrow !== undefined)
       return (
-        <IcicleGraphArrow
-          width={width}
-          arrow={arrow}
-          total={total}
-          filtered={filtered}
-          curPath={curPath}
-          setCurPath={setNewCurPath}
-          profileType={profileType}
-          navigateTo={navigateTo}
-          sortBy={storeSortBy as string}
-          flamegraphLoading={isLoading}
-          isHalfScreen={isHalfScreen}
-          mappingsListFromMetadata={mappingsList}
-        />
+        <div className="relative">
+          {timelineGuide?.show === true && (
+            <TimelineGuide
+              bounds={timelineGuide.props.bounds}
+              width={width}
+              height={1000}
+              margin={0}
+              ticks={60000 / 10000}
+            />
+          )}
+          <IcicleGraphArrow
+            width={width}
+            arrow={arrow}
+            total={total}
+            filtered={filtered}
+            curPath={curPath}
+            setCurPath={setNewCurPath}
+            profileType={profileType}
+            sortBy={storeSortBy as string}
+            flamegraphLoading={isLoading}
+            isHalfScreen={isHalfScreen}
+            mappingsListFromMetadata={mappingsList}
+            compareAbsolute={isCompareAbsolute}
+          />
+        </div>
       );
   }, [
     isLoading,
@@ -423,11 +203,12 @@ const ProfileIcicleGraph = function ProfileIcicleGraphNonMemo({
     curPath,
     setNewCurPath,
     profileType,
-    navigateTo,
     storeSortBy,
     isHalfScreen,
     isDarkMode,
     mappingsList,
+    isCompareAbsolute,
+    timelineGuide,
   ]);
 
   if (error != null) {
@@ -454,14 +235,6 @@ const ProfileIcicleGraph = function ProfileIcicleGraphNonMemo({
         transition={{duration: 0.5}}
       >
         {compareMode ? <DiffLegend /> : null}
-        {isColorStackLegendEnabled && (
-          <ColorStackLegend
-            navigateTo={navigateTo}
-            compareMode={compareMode}
-            mappings={mappings}
-            loading={isLoading}
-          />
-        )}
         <div className="min-h-48" id="h-icicle-graph">
           <>{icicleGraph}</>
         </div>

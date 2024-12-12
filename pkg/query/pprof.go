@@ -21,8 +21,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/apache/arrow/go/v16/arrow"
-	"github.com/apache/arrow/go/v16/arrow/array"
+	"github.com/apache/arrow/go/v17/arrow"
+	"github.com/apache/arrow/go/v17/arrow/array"
 
 	pprofpb "github.com/parca-dev/parca/gen/proto/go/google/pprof"
 	parcaprofile "github.com/parca-dev/parca/pkg/profile"
@@ -377,7 +377,7 @@ func (w *PprofWriter) transpose(r *parcaprofile.RecordReader) *pprofTranspositio
 	}
 
 	for i, f := range r.LabelFields {
-		t.labelNameIndices = append(t.labelNameIndices, w.string(strings.TrimPrefix(f.Name, parcaprofile.ColumnPprofLabelsPrefix)))
+		t.labelNameIndices = append(t.labelNameIndices, w.string(strings.TrimPrefix(f.Name, parcaprofile.ColumnLabelsPrefix)))
 		t.labelValueTranspositions = append(t.labelValueTranspositions, w.transposeBinaryArray(r.LabelColumns[i].Dict))
 	}
 

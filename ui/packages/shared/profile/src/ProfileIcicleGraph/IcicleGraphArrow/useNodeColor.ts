@@ -12,9 +12,9 @@
 // limitations under the License.
 
 import {EVERYTHING_ELSE} from '@parca/store';
-import {diffColor, diffColorPerSecond, getLastItem} from '@parca/utilities';
+import {diffColor, getLastItem} from '@parca/utilities';
 
-interface mappingColors {
+interface colors {
   [key: string]: string;
 }
 
@@ -22,32 +22,24 @@ interface Props {
   isDarkMode: boolean;
   compareMode: boolean;
   cumulative: bigint;
-  cumulativePerSecond: number | null;
   diff: bigint | null;
-  diffPerSecond: number | null;
-  mappingColors: mappingColors;
-  mappingFile: string | null;
+  colorsMap: colors;
+  colorAttribute: string | null;
 }
 
 const useNodeColor = ({
   isDarkMode,
   compareMode,
   cumulative,
-  cumulativePerSecond,
   diff,
-  diffPerSecond,
-  mappingColors,
-  mappingFile,
+  colorsMap,
+  colorAttribute,
 }: Props): string => {
   if (compareMode) {
-    if (cumulativePerSecond !== null && diffPerSecond !== null) {
-      return diffColorPerSecond(diffPerSecond, cumulativePerSecond, isDarkMode);
-    }
-
     return diffColor(diff ?? 0n, cumulative, isDarkMode);
   }
 
-  return mappingColors[getLastItem(mappingFile ?? '') ?? EVERYTHING_ELSE];
+  return colorsMap[getLastItem(colorAttribute ?? '') ?? EVERYTHING_ELSE];
 };
 
 export default useNodeColor;

@@ -21,8 +21,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/apache/arrow/go/v16/arrow/ipc"
-	"github.com/apache/arrow/go/v16/arrow/memory"
+	"github.com/apache/arrow/go/v17/arrow/ipc"
+	"github.com/apache/arrow/go/v17/arrow/memory"
 	"github.com/go-kit/log"
 	"github.com/gogo/status"
 	"github.com/polarsignals/frostdb/dynparquet"
@@ -146,9 +146,6 @@ found:
 }
 
 func (s *ProfileColumnStore) WriteRaw(ctx context.Context, req *profilestorepb.WriteRawRequest) (*profilestorepb.WriteRawResponse, error) {
-	ctx, span := s.tracer.Start(ctx, "write-raw")
-	defer span.End()
-
 	start := time.Now()
 	writeErr := s.writeSeries(ctx, req)
 
@@ -296,9 +293,6 @@ func (s *ProfileColumnStore) write(ctx context.Context, server profilestorepb.Pr
 }
 
 func (s *ProfileColumnStore) Export(ctx context.Context, req *otelgrpcprofilingpb.ExportProfilesServiceRequest) (*otelgrpcprofilingpb.ExportProfilesServiceResponse, error) {
-	ctx, span := s.tracer.Start(ctx, "otel-export")
-	defer span.End()
-
 	r, err := normalizer.OtlpRequestToArrowRecord(
 		ctx,
 		req,
